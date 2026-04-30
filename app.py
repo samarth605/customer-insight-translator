@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import json
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ html, body, [data-testid="stAppViewContainer"] {
 # ── Load API key from Streamlit Secrets ────────────────────────────────────────
 try:
     api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
 except Exception:
     st.error("API key not configured. Please add GOOGLE_API_KEY to Streamlit Secrets.")
     st.stop()
@@ -348,8 +348,10 @@ Raw consumer data:
 
         with st.spinner("Analyzing consumer data..."):
             try:
-                model = genai.GenerativeModel("gemini-1.5-flash")
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=prompt
+                )
                 raw_json = response.text.strip()
 
                 if raw_json.startswith("```"):
@@ -462,7 +464,7 @@ Raw consumer data:
         st.markdown("<hr class='divider'>", unsafe_allow_html=True)
         st.markdown(f"""
         <div style="text-align:center; color: var(--muted); font-size: 0.75rem;">
-            Powered by Gemini 1.5 Flash · {industry} · {depth} Analysis
+            Powered by Gemini 3 Flash · {industry} · {depth} Analysis
         </div>
         """, unsafe_allow_html=True)
 
