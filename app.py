@@ -1,5 +1,5 @@
 import streamlit as st
-import anthropic
+import google.generativeai as genai
 import json
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -36,10 +36,8 @@ html, body, [data-testid="stAppViewContainer"] {
 [data-testid="stHeader"] { background: transparent !important; }
 [data-testid="stSidebar"] { background: var(--surface) !important; border-right: 1px solid var(--border); }
 
-/* Hide Streamlit branding */
 #MainMenu, footer, header { visibility: hidden; }
 
-/* Hero */
 .hero {
     text-align: center;
     padding: 3rem 1rem 2rem;
@@ -47,7 +45,6 @@ html, body, [data-testid="stAppViewContainer"] {
     margin-bottom: 2rem;
 }
 .hero-label {
-    font-family: 'DM Sans', sans-serif;
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.2em;
@@ -63,10 +60,7 @@ html, body, [data-testid="stAppViewContainer"] {
     color: var(--text);
     margin: 0 0 1rem;
 }
-.hero h1 em {
-    color: var(--accent);
-    font-style: italic;
-}
+.hero h1 em { color: var(--accent); font-style: italic; }
 .hero p {
     color: var(--muted);
     font-size: 1rem;
@@ -76,33 +70,6 @@ html, body, [data-testid="stAppViewContainer"] {
     line-height: 1.7;
 }
 
-/* Cards */
-.card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    transition: border-color 0.2s;
-}
-.card:hover { border-color: #3A3A3A; }
-.card-label {
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 0.6rem;
-}
-.card h3 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.1rem;
-    font-weight: 400;
-    margin: 0 0 0.8rem;
-    color: var(--text);
-}
-
-/* Insight blocks */
 .insight-block {
     background: var(--surface2);
     border-left: 3px solid var(--accent);
@@ -123,7 +90,6 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 .insight-body { font-size: 0.95rem; line-height: 1.65; color: var(--text); }
 
-/* Pill tags */
 .pill {
     display: inline-block;
     background: #1E2A10;
@@ -135,10 +101,7 @@ html, body, [data-testid="stAppViewContainer"] {
     font-weight: 500;
     margin: 0.2rem 0.2rem 0.2rem 0;
 }
-.pill.pain { background: #2A1010; color: var(--danger); border-color: #501010; }
-.pill.persona { background: #0F2A24; color: var(--accent2); border-color: #104030; }
 
-/* Section headers */
 .section-header {
     display: flex;
     align-items: center;
@@ -163,7 +126,6 @@ html, body, [data-testid="stAppViewContainer"] {
     color: var(--text);
 }
 
-/* Textarea override */
 .stTextArea textarea {
     background: var(--surface2) !important;
     border: 1px solid var(--border) !important;
@@ -178,7 +140,6 @@ html, body, [data-testid="stAppViewContainer"] {
     box-shadow: 0 0 0 2px rgba(200,240,74,0.1) !important;
 }
 
-/* Buttons */
 .stButton > button {
     background: var(--accent) !important;
     color: #0D0D0D !important;
@@ -192,16 +153,7 @@ html, body, [data-testid="stAppViewContainer"] {
     letter-spacing: 0.02em !important;
 }
 .stButton > button:hover { opacity: 0.85 !important; transform: translateY(-1px) !important; }
-.stButton > button:active { transform: translateY(0) !important; }
 
-/* Secondary button */
-.stButton.secondary > button {
-    background: var(--surface2) !important;
-    color: var(--text) !important;
-    border: 1px solid var(--border) !important;
-}
-
-/* Select box */
 .stSelectbox > div > div {
     background: var(--surface2) !important;
     border: 1px solid var(--border) !important;
@@ -209,42 +161,8 @@ html, body, [data-testid="stAppViewContainer"] {
     border-radius: 8px !important;
 }
 
-/* Divider */
 .divider { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
 
-/* Status */
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: #1E2A10;
-    color: var(--accent);
-    border: 1px solid #3A5010;
-    border-radius: 100px;
-    padding: 0.3rem 0.9rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-
-/* Spinner */
-.stSpinner > div { border-top-color: var(--accent) !important; }
-
-/* Warning/info */
-.stAlert { border-radius: 8px !important; }
-
-/* Example data box */
-.example-box {
-    background: var(--surface2);
-    border: 1px dashed var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.2rem;
-    font-size: 0.82rem;
-    color: var(--muted);
-    line-height: 1.6;
-    font-style: italic;
-}
-
-/* Metric cards */
 .metric-row {
     display: flex;
     gap: 1rem;
@@ -261,7 +179,6 @@ html, body, [data-testid="stAppViewContainer"] {
 .metric-number {
     font-family: 'DM Serif Display', serif;
     font-size: 2rem;
-    color: var(--accent);
     line-height: 1;
     margin-bottom: 0.3rem;
 }
@@ -273,7 +190,6 @@ html, body, [data-testid="stAppViewContainer"] {
     font-weight: 600;
 }
 
-/* Tabs */
 [data-baseweb="tab-list"] {
     background: var(--surface2) !important;
     border-radius: 8px !important;
@@ -294,8 +210,26 @@ html, body, [data-testid="stAppViewContainer"] {
     color: var(--text) !important;
 }
 [data-baseweb="tab-panel"] { padding-top: 1.5rem !important; }
+
+.example-box {
+    background: var(--surface2);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.6;
+}
 </style>
 """, unsafe_allow_html=True)
+
+# ── Load API key from Streamlit Secrets ────────────────────────────────────────
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=api_key)
+except Exception:
+    st.error("API key not configured. Please add GOOGLE_API_KEY to Streamlit Secrets.")
+    st.stop()
 
 # ── Hero ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -305,21 +239,6 @@ st.markdown("""
     <p>Paste raw consumer data — reviews, comments, feedback — and get structured marketing insights in seconds.</p>
 </div>
 """, unsafe_allow_html=True)
-
-# ── API Key ────────────────────────────────────────────────────────────────────
-# Try secrets first, then ask user
-api_key = None
-try:
-    api_key = st.secrets["ANTHROPIC_API_KEY"]
-except:
-    pass
-
-if not api_key:
-    with st.expander("🔑 Enter your Anthropic API Key", expanded=True):
-        st.markdown("<p style='color: var(--muted); font-size:0.85rem;'>Your key is never stored. Get one free at <a href='https://console.anthropic.com' target='_blank' style='color:var(--accent)'>console.anthropic.com</a></p>", unsafe_allow_html=True)
-        api_key = st.text_input("API Key", type="password", placeholder="sk-ant-...")
-        if not api_key:
-            st.stop()
 
 # ── Main Layout ────────────────────────────────────────────────────────────────
 left, right = st.columns([1, 1.2], gap="large")
@@ -335,7 +254,6 @@ with left:
     industry = st.selectbox(
         "Industry Context",
         ["Electric Vehicles", "Consumer Tech", "E-Commerce", "SaaS / Software", "Retail / Fashion", "Food & Beverage", "Other"],
-        help="Helps the AI tailor insights to your market"
     )
 
     data_type = st.selectbox(
@@ -346,7 +264,7 @@ with left:
     raw_data = st.text_area(
         "Paste your raw consumer data here",
         height=280,
-        placeholder="Paste reviews, comments, or feedback here...\n\nExample:\n'The range anxiety is real. I love the car but the charging network is way too sparse in rural areas...'\n'Customer service took 3 weeks to respond. Completely unacceptable for a $70k vehicle.'\n'The acceleration is insane. Best driving experience I've had. Worth every penny.'"
+        placeholder="Paste reviews, comments, or feedback here...\n\nExample:\n'The range anxiety is real. I love the car but charging infrastructure is too sparse...'\n'Customer service took 3 weeks to respond. Unacceptable for a $70k vehicle.'\n'Best driving experience I've ever had. Worth every penny.'"
     )
 
     depth = st.select_slider(
@@ -361,8 +279,8 @@ with left:
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
     st.markdown("""
     <div class="example-box">
-    <strong style="color: #666; font-style:normal;">💡 What you'll get:</strong><br>
-    Key themes · Pain point heatmap · Behavioral personas · Sentiment breakdown · Actionable marketing recommendations
+        <strong style="color: #666;">💡 What you'll get:</strong><br>
+        Key themes · Pain point heatmap · Behavioral personas · Sentiment breakdown · Actionable marketing recommendations
     </div>
     """, unsafe_allow_html=True)
 
@@ -391,14 +309,16 @@ with right:
         depth_map = {
             "Quick Scan": "Provide a brief, high-level analysis with 2-3 key points per section.",
             "Standard": "Provide a balanced analysis with 3-5 points per section and moderate detail.",
-            "Deep Dive": "Provide an exhaustive, detailed analysis with rich context, nuance, and 5+ points per section."
+            "Deep Dive": "Provide an exhaustive analysis with rich context and 5+ points per section."
         }
 
-        system_prompt = f"""You are an expert marketing strategist and consumer behavior analyst specializing in the {industry} industry.
+        prompt = f"""You are an expert marketing strategist and consumer behavior analyst specializing in the {industry} industry.
 
-Analyze the provided consumer data and return ONLY a valid JSON object with this exact structure:
+Analyze the following {data_type} and return ONLY a valid JSON object. No markdown, no backticks, no explanation — raw JSON only.
+
+Use this exact structure:
 {{
-  "summary": "2-sentence executive summary of the overall consumer sentiment",
+  "summary": "2-sentence executive summary of overall consumer sentiment",
   "sentiment": {{
     "positive": 65,
     "neutral": 15,
@@ -406,49 +326,42 @@ Analyze the provided consumer data and return ONLY a valid JSON object with this
   }},
   "themes": ["Theme 1", "Theme 2", "Theme 3", "Theme 4", "Theme 5"],
   "pain_points": [
-    {{"title": "Pain Point Name", "description": "What it is and why it matters", "severity": "High/Medium/Low"}},
-    {{"title": "Pain Point Name", "description": "What it is and why it matters", "severity": "High/Medium/Low"}}
+    {{"title": "Pain Point Name", "description": "What it is and why it matters", "severity": "High"}},
+    {{"title": "Pain Point Name", "description": "What it is and why it matters", "severity": "Medium"}}
   ],
   "personas": [
-    {{"name": "Persona Name", "description": "Behavioral description, motivations, and what drives them", "percentage": 40}},
-    {{"name": "Persona Name", "description": "Behavioral description, motivations, and what drives them", "percentage": 35}}
+    {{"name": "Persona Name", "description": "Behavioral description and motivations", "percentage": 40}},
+    {{"name": "Persona Name", "description": "Behavioral description and motivations", "percentage": 35}}
   ],
   "recommendations": [
-    {{"title": "Recommendation Title", "action": "Specific, actionable marketing recommendation", "priority": "High/Medium/Low"}},
-    {{"title": "Recommendation Title", "action": "Specific, actionable marketing recommendation", "priority": "High/Medium/Low"}},
-    {{"title": "Recommendation Title", "action": "Specific, actionable marketing recommendation", "priority": "High/Medium/Low"}}
+    {{"title": "Recommendation Title", "action": "Specific actionable marketing recommendation", "priority": "High"}},
+    {{"title": "Recommendation Title", "action": "Specific actionable marketing recommendation", "priority": "Medium"}},
+    {{"title": "Recommendation Title", "action": "Specific actionable marketing recommendation", "priority": "Low"}}
   ],
-  "key_quote": "The single most representative quote or paraphrased insight from the data"
+  "key_quote": "The single most representative insight paraphrased from the data"
 }}
 
 {depth_map[depth]}
-Return ONLY the JSON. No markdown, no backticks, no explanation."""
+
+Raw consumer data:
+{raw_data}"""
 
         with st.spinner("Analyzing consumer data..."):
             try:
-                client = anthropic.Anthropic(api_key=api_key)
-                response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=1000,
-                    system=system_prompt,
-                    messages=[{
-                        "role": "user",
-                        "content": f"Data type: {data_type}\n\nRaw consumer data:\n{raw_data}"
-                    }]
-                )
-                raw_json = response.content[0].text.strip()
-                # Strip markdown fences if present
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                response = model.generate_content(prompt)
+                raw_json = response.text.strip()
+
                 if raw_json.startswith("```"):
                     raw_json = raw_json.split("```")[1]
                     if raw_json.startswith("json"):
                         raw_json = raw_json[4:]
+                    raw_json = raw_json.strip()
+
                 data = json.loads(raw_json)
 
             except json.JSONDecodeError:
                 st.error("The AI returned an unexpected format. Please try again.")
-                st.stop()
-            except anthropic.AuthenticationError:
-                st.error("Invalid API key. Please check and re-enter.")
                 st.stop()
             except Exception as e:
                 st.error(f"Something went wrong: {str(e)}")
@@ -456,7 +369,6 @@ Return ONLY the JSON. No markdown, no backticks, no explanation."""
 
         # ── Results ────────────────────────────────────────────────────────────
 
-        # Summary badge
         st.markdown(f"""
         <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; margin-bottom: 1.5rem;">
             <div class="insight-title">Executive Summary</div>
@@ -464,16 +376,14 @@ Return ONLY the JSON. No markdown, no backticks, no explanation."""
         </div>
         """, unsafe_allow_html=True)
 
-        # Key quote
         if data.get('key_quote'):
             st.markdown(f"""
             <div style="border-left: 3px solid var(--accent2); padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; background: #0F2A24; border-radius: 0 8px 8px 0;">
                 <div class="insight-title">Most Representative Voice</div>
-                <div style="font-family: 'DM Serif Display', serif; font-size: 1rem; color: var(--accent2); font-style: italic; line-height: 1.6;">"{ data.get('key_quote', '')}"</div>
+                <div style="font-family: 'DM Serif Display', serif; font-size: 1rem; color: var(--accent2); font-style: italic; line-height: 1.6;">"{data.get('key_quote', '')}"</div>
             </div>
             """, unsafe_allow_html=True)
 
-        # Sentiment metrics
         sentiment = data.get('sentiment', {})
         pos = sentiment.get('positive', 0)
         neu = sentiment.get('neutral', 0)
@@ -496,7 +406,6 @@ Return ONLY the JSON. No markdown, no backticks, no explanation."""
         </div>
         """, unsafe_allow_html=True)
 
-        # Tabs for organized output
         tab1, tab2, tab3, tab4 = st.tabs(["🏷️ Themes", "🔥 Pain Points", "👤 Personas", "🎯 Recommendations"])
 
         with tab1:
@@ -553,13 +462,13 @@ Return ONLY the JSON. No markdown, no backticks, no explanation."""
         st.markdown("<hr class='divider'>", unsafe_allow_html=True)
         st.markdown(f"""
         <div style="text-align:center; color: var(--muted); font-size: 0.75rem;">
-            Powered by Claude Sonnet · {industry} · {depth} Analysis
+            Powered by Gemini 1.5 Flash · {industry} · {depth} Analysis
         </div>
         """, unsafe_allow_html=True)
 
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div style="text-align:center; padding: 2rem 0 1rem; color: #444; font-size: 0.75rem; border-top: 1px solid var(--border); margin-top: 3rem;">
-    Consumer Insight Translator · Built with Streamlit + Anthropic Claude · CRD 494 Project
+    Consumer Insight Translator · Built with Streamlit + Google Gemini · CRD 494 Project
 </div>
 """, unsafe_allow_html=True)
