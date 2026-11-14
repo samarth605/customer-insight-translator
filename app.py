@@ -395,8 +395,8 @@ Feedback:
 
 # ── Usage logging + caps (Supabase is optional; falls back to in-memory) ───────
 def _sbh(extra=None):
-    return {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}",
-            "Content-Type": "application/json", **(extra or {})}
+    # New-style sb_publishable_ keys are not JWTs: send on apikey only, never as Bearer.
+    return {"apikey": SB_KEY, "Content-Type": "application/json", **(extra or {})}
 
 
 @st.cache_resource
@@ -427,12 +427,13 @@ def log_run(subject, n_reviews, sources, seconds, mode):
     m["n"] += 1
     if SB_URL and SB_KEY:
         try:
-            requests.post(f"{SB_URL}/rest/v1/runs", headers=_sbh({"Prefer": "return=minimal"}), timeout=6,
-                          json={"session_id": st.session_state.sid, "company": subject[:80],
-                                "n_reviews": n_reviews, "sources": sources, "seconds": round(seconds, 1),
-                                "mode": mode})
-        except Exception:
-            pass
+            r = requests.post(f"{SB_URL}/rest/v1/runs", headers=_sbh({"Prefer": "return=minimal"}), timeout=6,
+                              json={"session_id": st.session_state.sid, "company": subject[:80],
+                                    "n_reviews": n_reviews, "sources": sources, "seconds": round(seconds, 1),
+                                    "mode": mode})
+            st.session_state.sb_err = f"{r.status_code}: {r.text[:200]}" if r.status_code >= 300 else ""
+        except Exception as e:
+            st.session_state.sb_err = f"{type(e).__name__}: {str(e)[:200]}"
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -732,3 +733,6 @@ if stats:
         b.metric("Unique visitors", f"{stats['visitors']:,}")
         c.metric("Reviews analyzed", f"{stats['reviews']:,}")
         d.metric("Avg time (sec)", stats["avg_secs"])
+
+if st.session_state.get("sb_err"):
+    st.caption(f"⚠️ Usage logging failed → {st.session_state.sb_err}")
