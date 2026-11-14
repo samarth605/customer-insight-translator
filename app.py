@@ -495,12 +495,12 @@ with left:
             return False
         return True
 
-    def finish(data, model, subject, items, status, secs, mode):
+    def finish(data, model, subject, items, status, secs, mode, window=""):
         counts = {}
         for it in items:
             counts[it["source"]] = counts.get(it["source"], 0) + 1
         st.session_state.result = {"data": data, "model": model, "industry": industry, "depth": depth,
-                                   "subject": subject, "items": items, "source_counts": counts, "status": status}
+                                   "subject": subject, "items": items, "source_counts": counts, "status": status, "window": window}
         st.session_state.runs += 1
         n = len(items) if items else 0
         log_run(subject, n, ",".join(counts) or "paste", secs, mode)
@@ -510,6 +510,8 @@ with left:
     with tab_search:
         company = st.text_input("Company name", placeholder="e.g. Lucid Motors")
         hint = st.text_input("Website or country (optional)", placeholder="e.g. lucidmotors.com or Germany")
+        window = st.selectbox("Review window", ["Last 3 months", "Last 6 months", "Last 12 months", "All time"], index=1)
+        months = {"Last 3 months": 3, "Last 6 months": 6, "Last 12 months": 12, "All time": None}[window]
         if st.button("1️⃣  Find company", use_container_width=True):
             if not company.strip():
                 st.warning("Type a company name first.")
@@ -541,17 +543,17 @@ with left:
                     try:
                         t0 = time.time()
                         with st.spinner("Pulling reviews..."):
-                            items, status = gather(subject, srcs, YT_KEY)
+                            items, status = gather(subject, srcs, YT_KEY, months)
                         st.caption(" · ".join(f"{k}: {v}" for k, v in status.items()))
                         if len(items) < 5:
-                            st.warning("Found fewer than 5 reviews. Try another source, a more specific "
-                                       "name, or use the Paste tab.")
+                            st.warning("Found fewer than 5 reviews in that window. Try a longer window, another "
+                                       "source, a more specific name, or the Paste tab.")
                         else:
-                            body = "\n".join(f"[{i}] ({it['source']}) {it['text']}" for i, it in enumerate(items, 1))
+                            body = "\n".join(f"[{i}] ({it['source']}, {it.get('date') or 'n/a'}) {it['text']}" for i, it in enumerate(items, 1))
                             prompt = build_prompt(industry, subject, desc, body, depth, True)
                             with st.spinner("Analyzing..."):
                                 data, model = run_analysis(prompt, active_key)
-                            finish(data, model, subject, items, status, time.time() - t0, "search")
+                            finish(data, model, subject, items, status, time.time() - t0, "search", window)
                     except Exception as e:
                         st.error(f"Something went wrong: {e}")
 
@@ -644,7 +646,7 @@ with right:
                          else ("Low, treat as directional", "var(--danger)"))
             st.markdown(f"""
             <div style="margin-bottom:1.2rem">
-                <div class="insight-title">Based on {n} reviews · Confidence: <span style="color:{col}">{conf}</span></div>
+                <div class="insight-title">Based on {n} reviews{' · ' + res.get('window', '') if res.get('window') else ''} · Confidence: <span style="color:{col}">{conf}</span></div>
                 {mix}
             </div>
             """, unsafe_allow_html=True)
