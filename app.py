@@ -1,5 +1,6 @@
 import html
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -13,226 +14,59 @@ from pydantic import BaseModel, Field
 
 from sources import gather
 
-# ── Page config ────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Consumer Insight Translator",
-    page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+APP_NAME = "VoiceBrief"
+st.set_page_config(page_title=f"{APP_NAME} | customer voice to strategy brief", page_icon="📝", layout="wide")
 
-# ── Custom CSS ─────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+CSS = """<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+:root{--paper:#F6F1E7;--card:#FBF8F1;--ink:#1B1B1B;--muted:#6B665C;--line:#D9D0BC;--accent:#B4472A;--olive:#5B6B4F;--sand:#CDBF9F;}
+.stApp{background:var(--paper);}
+html,body,.stApp,[class*="css"]{font-family:'Inter',system-ui,sans-serif;color:var(--ink);}
+#MainMenu,footer,header{visibility:hidden;}
+.block-container{max-width:1020px;padding-top:2rem;padding-bottom:4rem;}
+.mast{font-family:'IBM Plex Mono',monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.6rem;}
+h1.hero{font-family:'Fraunces',Georgia,serif;font-weight:800;font-size:2.7rem;line-height:1.08;margin:0 0 .6rem 0;letter-spacing:-.02em;}
+.sub{color:var(--muted);max-width:660px;font-size:1.02rem;margin-bottom:1.6rem;}
+.brief{background:var(--card);border:1px solid var(--line);padding:2.2rem 2.6rem;margin-top:1.6rem;box-shadow:0 1px 0 var(--line),0 10px 30px -18px rgba(0,0,0,.25);}
+.brief .meta{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:.8rem;margin-bottom:1.4rem;}
+.brief h2.hl{font-family:'Fraunces',serif;font-weight:600;font-size:1.9rem;line-height:1.2;margin:0 0 .8rem 0;}
+.lede{font-size:1.02rem;line-height:1.6;color:#33302B;margin-bottom:1rem;}
+.bar{display:flex;height:9px;overflow:hidden;background:var(--line);}
+.bar span{display:block;height:100%;}
+.barkey{font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--muted);margin-top:.4rem;}
+.sec{margin-top:2.2rem;}
+.sec-h{display:flex;align-items:baseline;gap:.8rem;border-top:2px solid var(--ink);padding-top:.7rem;margin-bottom:1rem;}
+.sec-h .num{font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--accent);}
+.sec-h h2{font-family:'Fraunces',serif;font-size:1.35rem;font-weight:600;margin:0;}
+.pt{padding:.7rem 0;border-bottom:1px dashed var(--line);}
+.pt-t{font-weight:600;margin-bottom:.2rem;}
+.pt-d{color:#47433C;font-size:.95rem;line-height:1.55;}
+.rcs{margin-top:.35rem;}
+.rc{font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--accent);margin-right:.8rem;text-decoration:none;}
+a.rc:hover{text-decoration:underline;}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);padding:.08rem .4rem;margin-left:.4rem;color:var(--muted);}
+.tag.high{color:var(--accent);border-color:var(--accent);}
+.tag.medium{color:#8A6A12;border-color:#8A6A12;}
+.tag.low{color:var(--olive);border-color:var(--olive);}
+.tag.ok{color:var(--olive);border-color:var(--olive);}
+.angle{display:grid;grid-template-columns:1.5fr 1fr;gap:1.6rem;padding:1rem 0;border-bottom:1px dashed var(--line);}
+.hook{font-family:'Fraunces',serif;font-size:1.25rem;font-weight:600;line-height:1.25;margin-bottom:.4rem;}
+.note{border-left:3px solid var(--accent);padding-left:.9rem;font-family:'Fraunces',serif;font-style:italic;color:#47433C;font-size:.98rem;}
+.notek{font-style:normal;margin-top:.4rem;}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:2rem;}
+.bn{font-family:'Fraunces',serif;font-size:1.3rem;font-weight:600;margin-bottom:.5rem;}
+.dim{display:grid;grid-template-columns:150px 110px 1fr;gap:1rem;padding:.7rem 0;border-bottom:1px dashed var(--line);align-items:start;}
+.edge{font-family:'IBM Plex Mono',monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);}
+.gap{border:1px solid var(--line);background:#FFF9EC;padding:1rem 1.2rem;margin-bottom:.9rem;}
+.warn{border:1px solid var(--accent);color:var(--accent);padding:.6rem .9rem;font-size:.85rem;margin-bottom:1rem;}
+.stButton>button{background:var(--ink);border:0;border-radius:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;}
+.stButton>button p{color:var(--paper);}
+.stButton>button:hover{background:var(--accent);}
+.stTabs [data-baseweb="tab"]{font-family:'IBM Plex Mono',monospace;font-size:.8rem;}
+@media(max-width:760px){.angle,.cols2,.dim{grid-template-columns:1fr;}.brief{padding:1.4rem 1.2rem;}h1.hero{font-size:2rem;}}
+</style>"""
+st.markdown(CSS, unsafe_allow_html=True)
 
-:root {
-    --bg: #0D0D0D;
-    --surface: #151515;
-    --surface2: #1C1C1C;
-    --border: #2A2A2A;
-    --accent: #C8F04A;
-    --accent2: #4AF0C8;
-    --text: #F0F0F0;
-    --muted: #888;
-    --danger: #F04A4A;
-}
-
-html, body, [data-testid="stAppViewContainer"] {
-    background: var(--bg) !important;
-    color: var(--text) !important;
-    font-family: 'DM Sans', sans-serif !important;
-}
-
-[data-testid="stHeader"] { background: transparent !important; }
-[data-testid="stSidebar"] { background: var(--surface) !important; border-right: 1px solid var(--border); }
-
-#MainMenu, footer, header { visibility: hidden; }
-
-.hero {
-    text-align: center;
-    padding: 3rem 1rem 2rem;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 2rem;
-}
-.hero-label {
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 1rem;
-}
-.hero h1 {
-    font-family: 'DM Serif Display', serif;
-    font-size: clamp(2.2rem, 5vw, 3.8rem);
-    font-weight: 400;
-    line-height: 1.1;
-    color: var(--text);
-    margin: 0 0 1rem;
-}
-.hero h1 em { color: var(--accent); font-style: italic; }
-.hero p {
-    color: var(--muted);
-    font-size: 1rem;
-    font-weight: 300;
-    max-width: 540px;
-    margin: 0 auto;
-    line-height: 1.7;
-}
-
-.insight-block {
-    background: var(--surface2);
-    border-left: 3px solid var(--accent);
-    border-radius: 0 8px 8px 0;
-    padding: 1rem 1.2rem;
-    margin-bottom: 0.8rem;
-}
-.insight-block.pain { border-left-color: var(--danger); }
-.insight-block.persona { border-left-color: var(--accent2); }
-.insight-block.rec { border-left-color: #F0C84A; }
-.insight-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 0.4rem;
-}
-.insight-body { font-size: 0.95rem; line-height: 1.65; color: var(--text); }
-
-.pill {
-    display: inline-block;
-    background: #1E2A10;
-    color: var(--accent);
-    border: 1px solid #3A5010;
-    border-radius: 100px;
-    padding: 0.2rem 0.75rem;
-    font-size: 0.78rem;
-    font-weight: 500;
-    margin: 0.2rem 0.2rem 0.2rem 0;
-}
-
-.section-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.2rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border);
-}
-.section-header .icon {
-    width: 32px; height: 32px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.9rem;
-}
-.section-header h2 {
-    font-family: 'DM Serif Display', serif;
-    font-size: 1.3rem;
-    font-weight: 400;
-    margin: 0;
-    color: var(--text);
-}
-
-.stTextArea textarea {
-    background: var(--surface2) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    color: var(--text) !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.9rem !important;
-    line-height: 1.6 !important;
-}
-.stTextArea textarea:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px rgba(200,240,74,0.1) !important;
-}
-
-.stButton > button {
-    background: var(--accent) !important;
-    color: #0D0D0D !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.9rem !important;
-    padding: 0.6rem 1.8rem !important;
-    transition: opacity 0.2s, transform 0.1s !important;
-    letter-spacing: 0.02em !important;
-}
-.stButton > button:hover { opacity: 0.85 !important; transform: translateY(-1px) !important; }
-
-.stSelectbox > div > div {
-    background: var(--surface2) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-    border-radius: 8px !important;
-}
-
-.divider { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
-
-.metric-row {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-.metric-card {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1rem;
-    text-align: center;
-}
-.metric-number {
-    font-family: 'DM Serif Display', serif;
-    font-size: 2rem;
-    line-height: 1;
-    margin-bottom: 0.3rem;
-}
-.metric-label {
-    font-size: 0.72rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
-}
-
-[data-baseweb="tab-list"] {
-    background: var(--surface2) !important;
-    border-radius: 8px !important;
-    padding: 4px !important;
-    gap: 2px !important;
-    border: 1px solid var(--border) !important;
-}
-[data-baseweb="tab"] {
-    background: transparent !important;
-    color: var(--muted) !important;
-    border-radius: 6px !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-weight: 500 !important;
-    font-size: 0.85rem !important;
-}
-[aria-selected="true"][data-baseweb="tab"] {
-    background: var(--surface) !important;
-    color: var(--text) !important;
-}
-[data-baseweb="tab-panel"] { padding-top: 1.5rem !important; }
-
-.example-box {
-    background: var(--surface2);
-    border: 1px dashed var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.2rem;
-    font-size: 0.82rem;
-    color: var(--muted);
-    line-height: 1.6;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # ── Secrets & settings ─────────────────────────────────────────────────────────
 def secret(name):
@@ -243,8 +77,8 @@ def secret(name):
 
 
 GOOGLE_KEY = secret("GOOGLE_API_KEY")
-YT_KEY = secret("YOUTUBE_API_KEY")  # optional but needed for YouTube
-SB_URL = (secret("SUPABASE_URL") or "").rstrip("/")  # optional: usage logging
+YT_KEY = secret("YOUTUBE_API_KEY")
+SB_URL = (secret("SUPABASE_URL") or "").rstrip("/")
 SB_KEY = secret("SUPABASE_KEY")
 if not GOOGLE_KEY:
     st.error("GOOGLE_API_KEY missing. Add it in Streamlit Secrets.")
@@ -252,8 +86,8 @@ if not GOOGLE_KEY:
 
 PRIMARY_MODEL = "gemini-3.6-flash"  # stable names only; previews get retired
 FALLBACK_MODEL = "gemini-2.5-flash"
-MAX_CHARS = 30_000
-SESSION_LIMIT = 5   # free analyses per visitor session
+MAX_ITEMS = 120
+SESSION_LIMIT = 6   # free "run credits" per visitor session (compare costs 2)
 DAILY_LIMIT = 150   # free analyses per day across everyone
 
 if "sid" not in st.session_state:
@@ -261,9 +95,9 @@ if "sid" not in st.session_state:
     st.session_state.runs = 0
 
 depth_map = {
-    "Quick Scan": "Provide a brief, high-level analysis with 2-3 key points per section.",
-    "Standard": "Provide a balanced analysis with 3-5 points per section and moderate detail.",
-    "Deep Dive": "Provide an exhaustive analysis with rich context and 5+ points per section.",
+    "Quick Scan": "Be brief: 2-3 points per section, 3 messaging angles.",
+    "Standard": "Be balanced: 3-5 points per section, 4 messaging angles.",
+    "Deep Dive": "Be thorough: 5+ points per section, 5 messaging angles.",
 }
 
 
@@ -274,11 +108,32 @@ class Sentiment(BaseModel):
     negative: int
 
 
+class Point(BaseModel):
+    title: str
+    detail: str
+    evidence_ids: list[int] = Field(description="Numbers of supporting items, max 3")
+
+
 class PainPoint(BaseModel):
     title: str
-    description: str
+    detail: str = Field(description="What customers say went wrong")
+    cause: str = Field(description="Root cause as customers describe it")
     severity: Literal["High", "Medium", "Low"]
-    evidence_ids: list[int] = Field(description="Numbers of supporting source items, max 3. Empty if none.")
+    evidence_ids: list[int]
+
+
+class Angle(BaseModel):
+    hook: str = Field(description="A message a marketer could run, under 15 words")
+    why: str = Field(description="Why it should land, grounded in the data")
+    customer_words: str = Field(description="Short phrase (under 12 words) copied exactly from a cited item")
+    channel: Literal["Ad", "Landing page", "Sales", "Product", "Social"]
+    evidence_ids: list[int]
+
+
+class Avoid(BaseModel):
+    claim: str = Field(description="A claim or tone to avoid")
+    reason: str
+    evidence_ids: list[int]
 
 
 class Persona(BaseModel):
@@ -293,14 +148,53 @@ class Recommendation(BaseModel):
     priority: Literal["High", "Medium", "Low"]
 
 
-class Insights(BaseModel):
-    summary: str = Field(description="2-sentence executive summary of overall sentiment")
+class Brief(BaseModel):
+    headline: str = Field(description="One-sentence verdict a marketing lead can repeat")
+    summary: str = Field(description="2 sentences on overall sentiment and why")
     sentiment: Sentiment
-    themes: list[str]
+    loved: list[Point]
     pain_points: list[PainPoint]
+    angles: list[Angle]
+    avoid: list[Avoid]
     personas: list[Persona]
     recommendations: list[Recommendation]
-    key_quote: str = Field(description="Most representative insight, paraphrased from the data")
+
+
+class BrandSide(BaseModel):
+    sentiment: Sentiment
+    strengths: list[Point]
+    weaknesses: list[Point]
+
+
+class Dimension(BaseModel):
+    dimension: str = Field(description="A decision factor customers care about, e.g. price, support, range")
+    edge: Literal["A", "B", "Even"]
+    verdict: str
+    evidence_ids: list[int]
+
+
+class Gap(BaseModel):
+    gap: str = Field(description="The positioning opportunity in one line")
+    kind: Literal["Open territory", "Competitor weakness"]
+    for_brand: Literal["A", "B", "Either"]
+    rationale: str
+    move: str = Field(description="A concrete marketing move")
+    confidence: Literal["High", "Medium", "Low"]
+    evidence_ids: list[int]
+
+
+class AngleX(Angle):
+    brand: Literal["A", "B"]
+
+
+class Comparison(BaseModel):
+    headline: str
+    summary: str
+    a: BrandSide
+    b: BrandSide
+    dimensions: list[Dimension]
+    gaps: list[Gap]
+    angles: list[AngleX]
 
 
 class Candidate(BaseModel):
@@ -314,31 +208,11 @@ class Candidates(BaseModel):
     companies: list[Candidate]
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-def esc(obj):
-    """HTML-escape model/API text before it hits unsafe_allow_html."""
-    if isinstance(obj, str):
-        return html.escape(obj)
-    if isinstance(obj, list):
-        return [esc(i) for i in obj]
-    if isinstance(obj, dict):
-        return {k: esc(v) for k, v in obj.items()}
-    return obj
+SCHEMAS = {"brief": Brief, "compare": Comparison}
 
 
-def ev_links(ids, items):
-    out = []
-    for i in ids or []:
-        if isinstance(i, int) and 1 <= i <= len(items) and items[i - 1]["url"].startswith("http"):
-            it = items[i - 1]
-            out.append(f'<a href="{html.escape(it["url"])}" target="_blank" '
-                       f'style="color:var(--accent2);font-size:0.75rem;margin-right:0.8rem;">'
-                       f'↗ {html.escape(it["source"])} #{i}</a>')
-    return f'<div style="margin-top:0.5rem">{"".join(out)}</div>' if out else ""
-
-
+# ── Gemini helpers ─────────────────────────────────────────────────────────────
 def _call_gemini(prompt, api_key, schema, temperature):
-    """Retry on rate limits, fall back to a second model if the first is gone."""
     client = genai.Client(api_key=api_key)
     config = types.GenerateContentConfig(
         response_mime_type="application/json", response_schema=schema, temperature=temperature)
@@ -361,8 +235,8 @@ def _call_gemini(prompt, api_key, schema, temperature):
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def run_analysis(prompt, api_key):
-    return _call_gemini(prompt, api_key, Insights, 0.4)
+def run_analysis(prompt, api_key, kind):
+    return _call_gemini(prompt, api_key, SCHEMAS[kind], 0.4)
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -374,28 +248,49 @@ def find_companies(name, hint, api_key):
     return data["companies"]
 
 
-def build_prompt(industry, subject, desc, body, depth, numbered):
-    evidence = ("Items are numbered [n]. For each pain point, list up to 3 supporting item numbers in evidence_ids."
-                if numbered else "evidence_ids may be empty.")
-    return f"""You are an expert marketing strategist and consumer behavior analyst in the {industry} industry.
+RULES = """Rules:
+- Write for a marketing lead who will act on this. Be specific and plain, no buzzwords.
+- Ground every point in the numbered items. Never invent facts. Ignore items about a different company with a similar name.
+- Every point, pain point, angle and avoid-item must cite 1-3 item numbers in evidence_ids.
+- customer_words must be copied exactly from a cited item (under 12 words).
+- Percentages: sentiment must sum to 100; personas must sum to 100."""
+
+
+def build_brief_prompt(industry, subject, desc, body, depth):
+    return f"""You are a senior brand strategist in the {industry} industry writing a one-page brief.
 
 Subject: {subject}{' - ' + desc if desc else ''}
-Analyze the consumer feedback below.
+Turn the customer feedback below into a brief: what customers value, what is going wrong and why, messaging angles that use customers' own words, and claims to avoid.
 
-Rules:
-- sentiment.positive + neutral + negative must equal 100; persona percentages must sum to 100.
-- Ground every point in the data. Do not invent facts.
-- Ignore items clearly about a different company or product with a similar name.
-- {evidence}
-- {depth_map[depth]}
+{RULES}
+- {depth_map[depth]} Give 2-4 avoid-items.
 
-Feedback:
+Feedback (numbered):
 {body}"""
 
 
-# ── Usage logging + caps (Supabase is optional; falls back to in-memory) ───────
+def build_compare_prompt(industry, a, b, body, depth, na, nb):
+    thin = (f"\n- Data is thin (A: {na} items, B: {nb} items). Mark gaps Low confidence unless several items support them."
+            if min(na, nb) < 15 else "")
+    return f"""You are a senior brand strategist in the {industry} industry comparing two brands for a marketing lead.
+
+Brand A = {a[0]}{' - ' + a[1] if a[1] else ''}
+Brand B = {b[0]}{' - ' + b[1] if b[1] else ''}
+Each item below is tagged with its brand. Use the codes "A" and "B" in edge, for_brand and brand fields.
+
+Deliver: head-to-head on 5-7 decision factors customers care about, 3-5 positioning gaps (open territory nobody owns, or a competitor weakness to exploit, with a concrete marketing move), strengths and weaknesses per brand, and 2-3 messaging angles per brand.
+
+{RULES}
+- A gap must cite items. Say "Even" when evidence is balanced; never force a winner.{thin}
+- {depth_map[depth]}
+
+Feedback (numbered, brand-tagged):
+{body}"""
+
+
+# ── Usage logging + caps (Supabase optional; falls back to in-memory) ──────────
 def _sbh(extra=None):
-    # New-style sb_publishable_ keys are not JWTs: send on apikey only, never as Bearer.
+    # sb_publishable_ keys are not JWTs: send on apikey only, never as Bearer.
     return {"apikey": SB_KEY, "Content-Type": "application/json", **(extra or {})}
 
 
@@ -454,278 +349,364 @@ def sb_stats():
         return None
 
 
-# ── Hero ───────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="hero">
-    <div class="hero-label">● AI-Powered Marketing Tool</div>
-    <h1>Consumer Insight<br><em>Translator</em></h1>
-    <p>Type a company or paste raw feedback. Get structured marketing insights from YouTube, the App Store and Hacker News in seconds.</p>
-</div>
-""", unsafe_allow_html=True)
+# ── Rendering helpers (every model/API string goes through E) ──────────────────
+def E(x):
+    return html.escape(str(x if x is not None else ""))
 
-# ── Main Layout ────────────────────────────────────────────────────────────────
-left, right = st.columns([1, 1.2], gap="large")
 
-with left:
-    st.markdown("""
-    <div class="section-header"><div class="icon">📥</div><h2>Input</h2></div>
-    """, unsafe_allow_html=True)
+def norm(s):
+    return re.sub(r"\W+", " ", s.lower()).strip()
 
-    own_key = ""
-    with st.expander("🔑 Use your own free Gemini key (no usage limits)"):
-        own_key = st.text_input("Gemini API key", type="password",
-                                help="Get one free at aistudio.google.com. Never stored.")
-    active_key = own_key.strip() or GOOGLE_KEY
-    capped = not own_key.strip()
 
-    c1, c2 = st.columns(2)
-    industry = c1.selectbox("Industry Context", ["Electric Vehicles", "Consumer Tech", "E-Commerce",
-                                                 "SaaS / Software", "Retail / Fashion", "Food & Beverage", "Other"])
-    depth = c2.select_slider("Analysis Depth", ["Quick Scan", "Standard", "Deep Dive"], value="Standard")
+def verbatim(phrase, ids, items):
+    p = norm(phrase)
+    return bool(p) and any(p in norm(items[i - 1]["text"]) for i in ids or [] if 1 <= i <= len(items))
 
-    def caps_ok():
-        if not capped:
-            return True
-        if st.session_state.runs >= SESSION_LIMIT:
-            st.warning(f"You've used your {SESSION_LIMIT} free analyses this session. "
-                       "Add your own free Gemini key above to keep going.")
-            return False
-        if runs_today() >= DAILY_LIMIT:
-            st.warning("Today's free capacity is used up. Come back tomorrow, or add your own Gemini key above.")
-            return False
-        return True
 
-    def finish(data, model, subject, items, status, secs, mode, window=""):
-        counts = {}
-        for it in items:
-            counts[it["source"]] = counts.get(it["source"], 0) + 1
-        st.session_state.result = {"data": data, "model": model, "industry": industry, "depth": depth,
-                                   "subject": subject, "items": items, "source_counts": counts, "status": status, "window": window}
-        st.session_state.runs += 1
-        n = len(items) if items else 0
-        log_run(subject, n, ",".join(counts) or "paste", secs, mode)
+def has_evidence(ids, n):
+    return any(isinstance(i, int) and 1 <= i <= n for i in ids or [])
 
-    tab_search, tab_paste = st.tabs(["🔎 Search by company", "📋 Paste text"])
 
-    with tab_search:
-        company = st.text_input("Company name", placeholder="e.g. Lucid Motors")
-        hint = st.text_input("Website or country (optional)", placeholder="e.g. lucidmotors.com or Germany")
-        window = st.selectbox("Review window", ["Last 3 months", "Last 6 months", "Last 12 months", "All time"], index=1)
-        months = {"Last 3 months": 3, "Last 6 months": 6, "Last 12 months": 12, "All time": None}[window]
-        if st.button("1️⃣  Find company", use_container_width=True):
-            if not company.strip():
-                st.warning("Type a company name first.")
-            elif caps_ok():
-                try:
-                    with st.spinner("Looking for matches..."):
-                        st.session_state.cands = find_companies(company.strip(), hint.strip(), active_key)
-                        st.session_state.cand_query = company.strip()
-                except Exception as e:
-                    st.error(f"Something went wrong: {e}")
-
-        cands = st.session_state.get("cands")
-        if cands:
-            labels = [f"{c['name']} · {c['website']} · {c['headquarters']}" for c in cands]
-            labels.append("None of these, just use what I typed")
-            pick = st.radio("2️⃣  Which one did you mean?", labels)
-            idx = labels.index(pick)
-            if idx < len(cands):
-                st.caption(cands[idx]["description"])
-                subject, desc = cands[idx]["name"], f"{cands[idx]['description']} ({cands[idx]['website']})"
+def rcpts(ids, items):
+    out = []
+    for i in ids or []:
+        if isinstance(i, int) and 1 <= i <= len(items):
+            it = items[i - 1]
+            if it.get("url", "").startswith("http"):
+                out.append(f'<a class="rc" href="{E(it["url"])}" target="_blank">↗ {E(it["source"])} #{i}</a>')
             else:
-                subject, desc = st.session_state.get("cand_query", company), ""
-            srcs = st.multiselect("Sources", ["YouTube", "App Store", "Hacker News"],
-                                  default=["YouTube", "App Store", "Hacker News"])
-            if st.button("⚡  Pull reviews & analyze", use_container_width=True):
-                if not srcs:
-                    st.warning("Pick at least one source.")
-                elif caps_ok():
-                    try:
-                        t0 = time.time()
-                        with st.spinner("Pulling reviews..."):
-                            items, status = gather(subject, srcs, YT_KEY, months)
-                        st.caption(" · ".join(f"{k}: {v}" for k, v in status.items()))
-                        if len(items) < 5:
-                            st.warning("Found fewer than 5 reviews in that window. Try a longer window, another "
-                                       "source, a more specific name, or the Paste tab.")
-                        else:
-                            body = "\n".join(f"[{i}] ({it['source']}, {it.get('date') or 'n/a'}) {it['text']}" for i, it in enumerate(items, 1))
-                            prompt = build_prompt(industry, subject, desc, body, depth, True)
-                            with st.spinner("Analyzing..."):
-                                data, model = run_analysis(prompt, active_key)
-                            finish(data, model, subject, items, status, time.time() - t0, "search", window)
-                    except Exception as e:
-                        st.error(f"Something went wrong: {e}")
+                out.append(f'<span class="rc">#{i}</span>')
+    return f'<div class="rcs">{"".join(out)}</div>' if out else ""
 
-    with tab_paste:
-        data_type = st.selectbox("Data Type", ["Customer Reviews", "Social Media Comments",
-                                               "Survey Responses", "Mixed / All of the above"])
-        raw_data = st.text_area("Paste your raw consumer data here", height=240,
-                                placeholder="Paste reviews, comments, or feedback here...")
-        if st.button("⚡  Translate Insights", use_container_width=True):
-            if not raw_data.strip():
-                st.warning("Please paste some consumer data before analyzing.")
-            elif caps_ok():
-                try:
-                    t0 = time.time()
-                    trimmed = raw_data.strip()[:MAX_CHARS]
-                    if len(raw_data.strip()) > MAX_CHARS:
-                        st.warning(f"Input trimmed to the first {MAX_CHARS:,} characters.")
-                    prompt = build_prompt(industry, data_type, "", trimmed, depth, False)
-                    with st.spinner("Analyzing..."):
-                        data, model = run_analysis(prompt, active_key)
-                    finish(data, model, data_type, [], {}, time.time() - t0, "paste")
-                except Exception as e:
-                    st.error(f"Something went wrong: {e}")
 
-# ── Insights panel (reads from session state so it survives reruns) ────────────
-with right:
-    st.markdown("""
-    <div class="section-header"><div class="icon">📊</div><h2>Insights</h2></div>
-    """, unsafe_allow_html=True)
+def conf_of(n, hi=60, mid=20):
+    return "High" if n >= hi else "Medium" if n >= mid else "Low"
 
-    res = st.session_state.get("result")
-    if not res:
-        st.markdown("""
-        <div style="text-align:center; padding: 4rem 2rem; color: var(--muted);">
-            <div style="font-size: 2.5rem; margin-bottom: 1rem;">🔍</div>
-            <p style="font-size: 1rem; margin-bottom: 0.4rem; color: #555;">Waiting for data...</p>
-            <p style="font-size: 0.85rem;">Search a company or paste text on the left.</p>
-        </div>
-        """, unsafe_allow_html=True)
+
+def sec(num, title, body):
+    return (f'<div class="sec"><div class="sec-h"><span class="num">{num}</span><h2>{E(title)}</h2></div>'
+            f'{body}</div>')
+
+
+def tag(text, cls=""):
+    return f'<span class="tag {cls}">{E(text)}</span>'
+
+
+def bar(s):
+    p, n, g = int(s["positive"]), int(s["neutral"]), int(s["negative"])
+    return (f'<div class="bar"><span style="width:{p}%;background:var(--olive)"></span>'
+            f'<span style="width:{n}%;background:var(--sand)"></span>'
+            f'<span style="width:{g}%;background:var(--accent)"></span></div>'
+            f'<div class="barkey">{p}% positive · {n}% neutral · {g}% negative</div>')
+
+
+def point_html(title, detail, ids, items, extra="", badge=""):
+    return (f'<div class="pt"><div class="pt-t">{E(title)}{badge}</div><div class="pt-d">{E(detail)}</div>'
+            f'{extra}{rcpts(ids, items)}</div>')
+
+
+def angle_html(a, items, brand=""):
+    ids = a.get("evidence_ids", [])
+    ver = tag("✓ verbatim", "ok") if verbatim(a["customer_words"], ids, items) else tag("paraphrase")
+    return (f'<div class="angle"><div><div class="hook">{E(a["hook"])}</div>'
+            f'<div class="pt-d">{E(a["why"])}</div><div style="margin-top:.5rem">'
+            f'<span class="tag" style="margin-left:0">{E(a["channel"])}</span>{brand}</div></div>'
+            f'<div class="note">“{E(a["customer_words"])}”<div class="notek">{ver}</div>{rcpts(ids, items)}</div></div>')
+
+
+def drawer(items, with_brand=False):
+    if not items:
+        return
+    with st.expander(f"📎 The {len(items)} items behind this brief"):
+        rows = []
+        for i, it in enumerate(items, 1):
+            b = tag("Brand " + it["brand"]) if with_brand and it.get("brand") else ""
+            rows.append(f'<div class="pt"><span class="rc">#{i}</span>{b}{tag(it["source"])}'
+                        f'{tag(it.get("date") or "n/a")}<div class="pt-d">{E(it["text"][:300])}</div></div>')
+        st.markdown("".join(rows), unsafe_allow_html=True)
+
+
+def render_single(res):
+    d, items = res["data"], res["items"]
+    n = len(items)
+    meta = (f'{E(res["subject"])} · {E(res["industry"])} · {E(res["window"] or "your data")} · '
+            f'{n} items · confidence {conf_of(n)}')
+    angles = [a for a in d["angles"] if has_evidence(a["evidence_ids"], n)]
+    h = [f'<div class="brief"><div class="meta">{meta}</div>',
+         f'<h2 class="hl">{E(d["headline"])}</h2><div class="lede">{E(d["summary"])}</div>{bar(d["sentiment"])}']
+    if n < 20:
+        h.append('<div class="warn" style="margin-top:1rem">Small sample. Treat this as directional.</div>')
+    h.append(sec("01", "What customers value",
+                 "".join(point_html(p["title"], p["detail"], p["evidence_ids"], items) for p in d["loved"])))
+    h.append(sec("02", "What's going wrong", "".join(
+        point_html(p["title"], p["detail"], p["evidence_ids"], items,
+                   extra=f'<div class="pt-d"><b>Root cause:</b> {E(p["cause"])}</div>',
+                   badge=tag(p["severity"], p["severity"].lower())) for p in d["pain_points"])))
+    h.append(sec("03", "Say this", "".join(angle_html(a, items) for a in angles)
+                 or '<div class="pt-d">No angle met the evidence bar. Add more data.</div>'))
+    h.append(sec("04", "Avoid saying", "".join(
+        point_html(a["claim"], a["reason"], a["evidence_ids"], items) for a in d["avoid"])))
+    h.append(sec("05", "Who's talking", "".join(
+        f'<div class="pt"><div class="pt-t">{E(p["name"])}{tag(str(p["percentage"]) + "%")}</div>'
+        f'<div class="pt-d">{E(p["description"])}</div></div>' for p in d["personas"])))
+    h.append(sec("06", "Next moves", "".join(
+        point_html(r["title"], r["action"], [], items, badge=tag(r["priority"], r["priority"].lower()))
+        for r in d["recommendations"])))
+    h.append("</div>")
+    st.markdown("".join(h), unsafe_allow_html=True)
+
+
+def render_compare(res):
+    d, items = res["data"], res["items"]
+    na, nb = res["names"]
+    ca, cb = res["counts"]
+    n = len(items)
+    lab = {"A": na, "B": nb, "Even": "Even", "Either": "Either"}
+    meta = f'{E(na)} vs {E(nb)} · {E(res["industry"])} · {E(res["window"] or "your data")} · {n} items'
+
+    def score(name, side, c):
+        return (f'<div><div class="bn">{E(name)}</div>{bar(side["sentiment"])}'
+                f'<div class="barkey">{c} items · confidence {conf_of(c, 40, 15)}</div></div>')
+
+    def sw(name, side):
+        s = "".join(point_html(p["title"], p["detail"], p["evidence_ids"], items) for p in side["strengths"])
+        w = "".join(point_html(p["title"], p["detail"], p["evidence_ids"], items) for p in side["weaknesses"])
+        return (f'<div><div class="bn">{E(name)}</div><div class="barkey">STRENGTHS</div>{s}'
+                f'<div class="barkey" style="margin-top:1rem">WEAKNESSES</div>{w}</div>')
+
+    h = [f'<div class="brief"><div class="meta">{meta}</div>',
+         f'<h2 class="hl">{E(d["headline"])}</h2><div class="lede">{E(d["summary"])}</div>',
+         f'<div class="cols2">{score(na, d["a"], ca)}{score(nb, d["b"], cb)}</div>']
+    if min(ca, cb) < 15:
+        h.append(f'<div class="warn" style="margin-top:1rem">Thin data ({E(na)}: {ca}, {E(nb)}: {cb}). '
+                 'Treat the gaps below as hypotheses.</div>')
+    h.append(sec("01", "Head to head", "".join(
+        f'<div class="dim"><div class="pt-t">{E(x["dimension"])}</div><div class="edge">{E(lab.get(x["edge"], x["edge"]))}</div>'
+        f'<div><div class="pt-d">{E(x["verdict"])}</div>{rcpts(x["evidence_ids"], items)}</div></div>'
+        for x in d["dimensions"])))
+    gaps = [g for g in d["gaps"] if has_evidence(g["evidence_ids"], n)]
+    h.append(sec("02", "White space", "".join(
+        f'<div class="gap"><div>{tag(g["kind"])}{tag("for " + lab.get(g["for_brand"], g["for_brand"]))}'
+        f'{tag(g["confidence"] + " confidence", g["confidence"].lower())}</div>'
+        f'<div class="hook" style="margin-top:.5rem">{E(g["gap"])}</div>'
+        f'<div class="pt-d">{E(g["rationale"])}</div>'
+        f'<div class="pt-d" style="margin-top:.4rem"><b>Move:</b> {E(g["move"])}</div>{rcpts(g["evidence_ids"], items)}</div>'
+        for g in gaps) or '<div class="pt-d">No gap met the evidence bar. Try a longer window or more sources.</div>'))
+    h.append(sec("03", "Strengths and weaknesses", f'<div class="cols2">{sw(na, d["a"])}{sw(nb, d["b"])}</div>'))
+    angles = [a for a in d["angles"] if has_evidence(a["evidence_ids"], n)]
+    h.append(sec("04", "Say this", "".join(
+        angle_html(a, items, tag(lab[a["brand"]])) for a in angles)
+        or '<div class="pt-d">No angle met the evidence bar.</div>'))
+    h.append("</div>")
+    st.markdown("".join(h), unsafe_allow_html=True)
+
+
+# ── Masthead + shared settings ─────────────────────────────────────────────────
+st.markdown(f"""<div class="mast">{APP_NAME} · customer voice → strategy brief</div>
+<h1 class="hero">Turn what customers say into what to do next.</h1>
+<p class="sub">Pull recent public reviews, or paste your own. Get a sourced brief: messaging angles in customers' own words, claims to avoid, and where competitors leave the door open.</p>""",
+            unsafe_allow_html=True)
+
+own_key = ""
+with st.expander("🔑 Use your own free Gemini key (no usage limits)"):
+    own_key = st.text_input("Gemini API key", type="password", help="Get one free at aistudio.google.com. Never stored.")
+active_key = own_key.strip() or GOOGLE_KEY
+capped = not own_key.strip()
+
+s1, s2, s3 = st.columns(3)
+industry = s1.selectbox("Industry", ["Electric Vehicles", "Consumer Tech", "E-Commerce", "SaaS / Software",
+                                     "Retail / Fashion", "Food & Beverage", "Other"])
+depth = s2.select_slider("Depth", ["Quick Scan", "Standard", "Deep Dive"], value="Standard")
+window = s3.selectbox("Review window", ["Last 3 months", "Last 6 months", "Last 12 months", "All time"], index=1)
+months = {"Last 3 months": 3, "Last 6 months": 6, "Last 12 months": 12, "All time": None}[window]
+srcs = st.multiselect("Sources", ["YouTube", "App Store", "Hacker News"],
+                      default=["YouTube", "App Store", "Hacker News"])
+
+
+def caps_ok(cost=1):
+    if not capped:
+        return True
+    if st.session_state.runs + cost > SESSION_LIMIT:
+        st.warning(f"This needs {cost} of your free credits and you have {max(SESSION_LIMIT - st.session_state.runs, 0)} "
+                   "left this session. Add your own free Gemini key above to keep going.")
+        return False
+    if runs_today() >= DAILY_LIMIT:
+        st.warning("Today's free capacity is used up. Come back tomorrow, or add your own Gemini key above.")
+        return False
+    return True
+
+
+def source_counts(items):
+    c = {}
+    for it in items:
+        c[it["source"]] = c.get(it["source"], 0) + 1
+    return c
+
+
+def find(prefix, name, hint):
+    st.session_state[f"{prefix}_cands"] = find_companies(name.strip(), hint.strip(), active_key)
+    st.session_state[f"{prefix}_q"] = name.strip()
+
+
+def pick(prefix, label):
+    cands = st.session_state.get(f"{prefix}_cands")
+    if not cands:
+        return None
+    labels = [f"{c['name']} · {c['website']} · {c['headquarters']}" for c in cands]
+    labels.append("None of these, use what I typed")
+    idx = labels.index(st.radio(label, labels, key=f"{prefix}_radio"))
+    if idx < len(cands):
+        st.caption(cands[idx]["description"])
+        return cands[idx]["name"], f"{cands[idx]['description']} ({cands[idx]['website']})"
+    return st.session_state.get(f"{prefix}_q", ""), ""
+
+
+def numbered(items, with_brand=None):
+    lines = []
+    for i, it in enumerate(items, 1):
+        who = f"Brand {it['brand']}: {with_brand[it['brand']]}, " if with_brand else ""
+        lines.append(f"[{i}] ({who}{it['source']}, {it.get('date') or 'n/a'}) {it['text']}")
+    return "\n".join(lines)
+
+
+def paste_items(text):
+    parts = [p.strip() for p in re.split(r"\n+", text) if len(p.strip()) >= 15]
+    parts = parts or [text.strip()[:2000]]
+    return [{"source": "Pasted", "text": p[:800], "url": "", "date": ""} for p in parts[:MAX_ITEMS]]
+
+
+# ── Input tabs ─────────────────────────────────────────────────────────────────
+t1, t2, t3 = st.tabs(["📝 Brief on one brand", "⚔️ Compare two brands", "📋 Use your own data"])
+
+with t1:
+    c1, c2 = st.columns(2)
+    name = c1.text_input("Brand", key="s_name", placeholder="e.g. Lucid Motors")
+    hint = c2.text_input("Website or country (optional)", key="s_hint")
+    if st.button("1 · Find brand", key="s_find", use_container_width=True):
+        if not name.strip():
+            st.warning("Type a brand name first.")
+        elif caps_ok(1):
+            try:
+                with st.spinner("Looking for matches..."):
+                    find("s", name, hint)
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+    sel = pick("s", "2 · Which one did you mean?")
+    if sel and st.button("3 · Write the brief", key="s_go", use_container_width=True):
+        subject, desc = sel
+        if not srcs:
+            st.warning("Pick at least one source.")
+        elif caps_ok(1):
+            try:
+                t0 = time.time()
+                with st.spinner("Pulling reviews..."):
+                    items, status = gather(subject, srcs, YT_KEY, months)
+                st.caption(" · ".join(f"{k}: {v}" for k, v in status.items()))
+                if len(items) < 5:
+                    st.warning("Found fewer than 5 reviews in that window. Try a longer window, another source, "
+                               "a more specific name, or the data tab.")
+                else:
+                    with st.spinner("Writing the brief..."):
+                        data, model = run_analysis(
+                            build_brief_prompt(industry, subject, desc, numbered(items), depth), active_key, "brief")
+                    st.session_state.result = {"kind": "single", "data": data, "model": model, "industry": industry,
+                                               "subject": subject, "items": items, "window": window,
+                                               "source_counts": source_counts(items)}
+                    st.session_state.runs += 1
+                    log_run(subject, len(items), ",".join(source_counts(items)), time.time() - t0, "brief")
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+
+with t2:
+    ca, cb = st.columns(2)
+    na_ = ca.text_input("Brand A", key="a_name", placeholder="e.g. Lucid Motors")
+    ha_ = ca.text_input("Website or country (optional)", key="a_hint")
+    nb_ = cb.text_input("Brand B", key="b_name", placeholder="e.g. Rivian")
+    hb_ = cb.text_input("Website or country (optional)", key="b_hint")
+    if st.button("1 · Find both brands", key="c_find", use_container_width=True):
+        if not (na_.strip() and nb_.strip()):
+            st.warning("Type both brand names first.")
+        elif caps_ok(1):
+            try:
+                with st.spinner("Looking for matches..."):
+                    find("a", na_, ha_)
+                    find("b", nb_, hb_)
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+    pa, pb = st.columns(2)
+    with pa:
+        A = pick("a", "2 · Brand A: which one?")
+    with pb:
+        B = pick("b", "2 · Brand B: which one?")
+    st.caption("A comparison uses 2 of your free credits.")
+    if A and B and st.button("3 · Write the comparison", key="c_go", use_container_width=True):
+        if not srcs:
+            st.warning("Pick at least one source.")
+        elif caps_ok(2):
+            try:
+                t0 = time.time()
+                with st.spinner("Pulling reviews for both brands..."):
+                    ia, sa = gather(A[0], srcs, YT_KEY, months, max_items=80)
+                    ib, sb_ = gather(B[0], srcs, YT_KEY, months, max_items=80)
+                st.caption(f"{A[0]}: " + " · ".join(f"{k} {v}" for k, v in sa.items())
+                           + f"   |   {B[0]}: " + " · ".join(f"{k} {v}" for k, v in sb_.items()))
+                if len(ia) < 5 or len(ib) < 5:
+                    st.warning(f"Not enough reviews for both brands ({A[0]}: {len(ia)}, {B[0]}: {len(ib)}). "
+                               "Try a longer window or more sources.")
+                else:
+                    for it in ia:
+                        it["brand"] = "A"
+                    for it in ib:
+                        it["brand"] = "B"
+                    items = ia + ib
+                    prompt = build_compare_prompt(industry, A, B, numbered(items, {"A": A[0], "B": B[0]}),
+                                                  depth, len(ia), len(ib))
+                    with st.spinner("Writing the comparison..."):
+                        data, model = run_analysis(prompt, active_key, "compare")
+                    st.session_state.result = {"kind": "compare", "data": data, "model": model, "industry": industry,
+                                               "names": (A[0], B[0]), "counts": (len(ia), len(ib)), "items": items,
+                                               "window": window}
+                    st.session_state.runs += 2
+                    log_run(f"{A[0]} vs {B[0]}", len(items), ",".join(source_counts(items)), time.time() - t0, "compare")
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+
+with t3:
+    about = st.text_input("What is this feedback about? (optional)", key="p_about", placeholder="e.g. our spring survey")
+    raw = st.text_area("Paste reviews, comments or survey answers (one per line)", height=220, key="p_raw")
+    if st.button("Write the brief", key="p_go", use_container_width=True):
+        if not raw.strip():
+            st.warning("Paste some feedback first.")
+        elif caps_ok(1):
+            try:
+                t0 = time.time()
+                items = paste_items(raw)
+                subject = about.strip() or "Pasted feedback"
+                with st.spinner("Writing the brief..."):
+                    data, model = run_analysis(
+                        build_brief_prompt(industry, subject, "", numbered(items), depth), active_key, "brief")
+                st.session_state.result = {"kind": "single", "data": data, "model": model, "industry": industry,
+                                           "subject": subject, "items": items, "window": "",
+                                           "source_counts": source_counts(items)}
+                st.session_state.runs += 1
+                log_run(subject, len(items), "paste", time.time() - t0, "paste")
+            except Exception as e:
+                st.error(f"Something went wrong: {e}")
+
+# ── The brief ──────────────────────────────────────────────────────────────────
+res = st.session_state.get("result")
+if res:
+    if res["kind"] == "compare":
+        render_compare(res)
     else:
-        items, model_used = res["items"], res["model"]
-        industry, depth = res["industry"], res["depth"]
-        data = res["data"]
-        export_data = data
-        data = esc(data)
+        render_single(res)
+    st.caption(f"Sample of public comments and reviews, not a census. Written by {res['model']}.")
+    drawer(res["items"], with_brand=res["kind"] == "compare")
+    st.download_button("⬇️  Download brief data (JSON)", data=json.dumps(res["data"], indent=2, ensure_ascii=False),
+                       file_name="voicebrief.json", mime="application/json", use_container_width=True)
 
-# ── Results ────────────────────────────────────────────────────────────
-
-        st.markdown(f"""
-        <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem; margin-bottom: 1.5rem;">
-            <div class="insight-title">Executive Summary</div>
-            <div class="insight-body">{data.get('summary', '')}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if data.get('key_quote'):
-            st.markdown(f"""
-            <div style="border-left: 3px solid var(--accent2); padding: 0.8rem 1.2rem; margin-bottom: 1.5rem; background: #0F2A24; border-radius: 0 8px 8px 0;">
-                <div class="insight-title">Most Representative Voice</div>
-                <div style="font-family: 'DM Serif Display', serif; font-size: 1rem; color: var(--accent2); font-style: italic; line-height: 1.6;">"{data.get('key_quote', '')}"</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        sentiment = data.get('sentiment', {})
-        pos = sentiment.get('positive', 0)
-        neu = sentiment.get('neutral', 0)
-        neg = sentiment.get('negative', 0)
-
-        st.markdown(f"""
-        <div class="metric-row">
-            <div class="metric-card">
-                <div class="metric-number" style="color: var(--accent);">{pos}%</div>
-                <div class="metric-label">Positive</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-number" style="color: var(--muted);">{neu}%</div>
-                <div class="metric-label">Neutral</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-number" style="color: var(--danger);">{neg}%</div>
-                <div class="metric-label">Negative</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if items:
-            mix = " ".join(f'<span class="pill">{html.escape(k)}: {v}</span>' for k, v in res["source_counts"].items())
-            n = len(items)
-            conf, col = (("High", "var(--accent)") if n >= 60 else ("Medium", "#F0C84A") if n >= 20
-                         else ("Low, treat as directional", "var(--danger)"))
-            st.markdown(f"""
-            <div style="margin-bottom:1.2rem">
-                <div class="insight-title">Based on {n} reviews{' · ' + res.get('window', '') if res.get('window') else ''} · Confidence: <span style="color:{col}">{conf}</span></div>
-                {mix}
-            </div>
-            """, unsafe_allow_html=True)
-
-        tab1, tab2, tab3, tab4 = st.tabs(["🏷️ Themes", "🔥 Pain Points", "👤 Personas", "🎯 Recommendations"])
-
-        with tab1:
-            themes = data.get('themes', [])
-            pills = " ".join([f'<span class="pill">{t}</span>' for t in themes])
-            st.markdown(f"<div style='margin-bottom:1rem'>{pills}</div>", unsafe_allow_html=True)
-            for t in themes:
-                st.markdown(f"""
-                <div class="insight-block">
-                    <div class="insight-body">📌 {t}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        with tab2:
-            for pp in data.get('pain_points', []):
-                sev = pp.get('severity', 'Medium')
-                sev_color = {'High': 'var(--danger)', 'Medium': '#F0C84A', 'Low': 'var(--muted)'}.get(sev, 'var(--muted)')
-                st.markdown(f"""
-                <div class="insight-block pain">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                        <div class="insight-title">{pp.get('title','')}</div>
-                        <span style="font-size:0.72rem; font-weight:600; color:{sev_color}; letter-spacing:0.1em;">{sev} SEVERITY</span>
-                    </div>
-                    <div class="insight-body">{pp.get('description','')}</div>
-                    {ev_links(pp.get('evidence_ids', []), items)}
-                </div>
-                """, unsafe_allow_html=True)
-
-        with tab3:
-            for p in data.get('personas', []):
-                st.markdown(f"""
-                <div class="insight-block persona">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                        <div class="insight-title">{p.get('name','')}</div>
-                        <span style="font-size:0.85rem; font-weight:600; color:var(--accent2);">{p.get('percentage','')}% of audience</span>
-                    </div>
-                    <div class="insight-body">{p.get('description','')}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        with tab4:
-            for r in data.get('recommendations', []):
-                pri = r.get('priority', 'Medium')
-                pri_color = {'High': 'var(--accent)', 'Medium': '#F0C84A', 'Low': 'var(--muted)'}.get(pri, 'var(--muted)')
-                st.markdown(f"""
-                <div class="insight-block rec">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-                        <div class="insight-title">{r.get('title','')}</div>
-                        <span style="font-size:0.72rem; font-weight:600; color:{pri_color}; letter-spacing:0.1em;">{pri} PRIORITY</span>
-                    </div>
-                    <div class="insight-body">→ {r.get('action','')}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-        st.download_button(
-            "⬇️  Download results (JSON)",
-            data=json.dumps(export_data, indent=2, ensure_ascii=False),
-            file_name="consumer_insights.json",
-            mime="application/json",
-            use_container_width=True,
-        )
-
-        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="text-align:center; color: var(--muted); font-size: 0.75rem;">
-            Powered by {model_used} · {industry} · {depth} Analysis
-        </div>
-        """, unsafe_allow_html=True)
-
-# ── Footer ─────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div style="text-align:center; padding: 2rem 0 1rem; color: #444; font-size: 0.75rem; border-top: 1px solid var(--border); margin-top: 3rem;">
-    Consumer Insight Translator · Built with Streamlit + Google Gemini · CRD 494 Project
-</div>
-""", unsafe_allow_html=True)
+if st.session_state.get("sb_err"):
+    st.caption(f"⚠️ Usage logging failed → {st.session_state.sb_err}")
 
 stats = sb_stats()
 if stats:
@@ -735,6 +716,3 @@ if stats:
         b.metric("Unique visitors", f"{stats['visitors']:,}")
         c.metric("Reviews analyzed", f"{stats['reviews']:,}")
         d.metric("Avg time (sec)", stats["avg_secs"])
-
-if st.session_state.get("sb_err"):
-    st.caption(f"⚠️ Usage logging failed → {st.session_state.sb_err}")
