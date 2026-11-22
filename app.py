@@ -1,11 +1,12 @@
 import html
 import ipaddress
 import json
+import random
 import re
 import socket
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -67,34 +68,63 @@ a.rc:hover{text-decoration:underline;}
 .stButton>button p{color:var(--paper);}
 .stButton>button:hover{background:var(--accent);}
 .stTabs [data-baseweb="tab"]{font-family:'IBM Plex Mono',monospace;font-size:.8rem;}
+html,body{background:var(--paper)!important;}
 :root{color-scheme:light;}
 .stApp{color-scheme:light;}
 [data-testid="stWidgetLabel"] p,[data-testid="stWidgetLabel"] label,[data-testid="stWidgetLabel"] span{color:var(--ink)!important;font-weight:500;}
+[data-testid="stTab"],[data-testid="stTab"] *{color:var(--muted)!important;opacity:1!important;}
+[data-testid="stTab"]:hover,[data-testid="stTab"]:hover *{color:var(--ink)!important;}
+[data-testid="stTab"][aria-selected="true"],[data-testid="stTab"][aria-selected="true"] *{color:var(--accent)!important;}
+.stTabs [data-baseweb="tab"] p{color:var(--muted)!important;}
+.stTabs [aria-selected="true"] p{color:var(--accent)!important;}
 .stTextInput input,.stTextArea textarea{background:#fff!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
-[data-baseweb="input"],[data-baseweb="base-input"],[data-baseweb="textarea"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;}
+[data-baseweb="input"],[data-baseweb="base-input"],[data-baseweb="textarea"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;box-shadow:none!important;}
+[data-testid$="RootElement"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;box-shadow:none!important;}
+[data-testid="stSelectbox"] [role="group"],[data-testid="stMultiSelect"] [role="group"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;box-shadow:none!important;}
+[data-testid="stSelectbox"] input,[data-testid="stMultiSelect"] input{background:transparent!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
+[data-testid="stSelectbox"] button,[data-testid="stSelectbox"] svg,[data-testid="stMultiSelect"] button,[data-testid="stMultiSelect"] svg{color:var(--ink)!important;fill:var(--ink)!important;}
 [data-baseweb="select"]>div{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;}
 [data-baseweb="select"] div,[data-baseweb="select"] span,[data-baseweb="select"] input{color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
 [data-baseweb="select"] svg{fill:var(--ink)!important;}
-[data-baseweb="tag"]{background:var(--accent)!important;}
-[data-baseweb="tag"] span,[data-baseweb="tag"] svg{color:#fff!important;fill:#fff!important;-webkit-text-fill-color:#fff!important;}
-[data-baseweb="popover"] ul,[data-baseweb="popover"] li,[data-baseweb="menu"]{background:#fff!important;color:var(--ink)!important;}
-[data-baseweb="popover"] li:hover{background:var(--paper)!important;}
-input::placeholder,textarea::placeholder{color:#9A9488!important;-webkit-text-fill-color:#9A9488!important;}
-.stTabs [data-baseweb="tab"] p{color:var(--muted)!important;}
-.stTabs [aria-selected="true"] p{color:var(--accent)!important;}
+[data-tag],[data-baseweb="tag"]{background:var(--accent)!important;}
+[data-tag] *,[data-baseweb="tag"] *{color:#fff!important;fill:#fff!important;-webkit-text-fill-color:#fff!important;}
+[data-testid$="VirtualDropdown"],[data-baseweb="popover"] ul,[data-baseweb="menu"]{background:#fff!important;border:1px solid var(--line)!important;}
+[role="listbox"],[role="option"]{background:transparent!important;color:var(--ink)!important;}
+[role="option"] *,[data-baseweb="popover"] li{color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
+[role="option"]:hover,[role="option"][data-selected="true"],[role="option"][data-focused="true"],[data-baseweb="popover"] li:hover{background:var(--paper)!important;}
+[data-testid="stRadioOption"] > div > div:first-child{background:#fff!important;border:1.5px solid var(--muted)!important;}
+[data-testid="stRadioOption"][data-selected="true"] > div > div:first-child{background:var(--accent)!important;border-color:var(--accent)!important;}
+[data-testid="stRadio"] label p,[data-testid="stRadioOption"] p{color:var(--ink)!important;}
+input::placeholder,textarea::placeholder{color:#9A9488!important;-webkit-text-fill-color:#9A9488!important;opacity:1!important;}
 [data-testid="stExpander"]{background:var(--card);border:1px solid var(--line);border-radius:2px;}
 [data-testid="stExpander"] summary p,[data-testid="stExpander"] summary span{color:var(--ink)!important;}
-[data-testid="stRadio"] label p{color:var(--ink)!important;}
+[data-testid="stExpander"] details,[data-testid="stExpander"] summary,[data-testid="stExpander"] summary:hover,[data-testid="stExpander"] summary:focus,[data-testid="stExpander"] details[open]>summary{background:var(--card)!important;color:var(--ink)!important;}
+[data-testid="stExpander"] summary svg{color:var(--ink)!important;fill:var(--ink)!important;}
+.brief a.rc,.stApp a.rc{color:var(--accent)!important;}
+[data-testid="stCaptionContainer"]{opacity:1!important;}
 [data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] *{color:var(--muted)!important;}
 [data-testid="stMetric"] *,[data-testid="stSpinner"] *{color:var(--ink)!important;}
 [data-testid="stTickBar"] *{color:var(--muted)!important;}
-[data-testid="stFileUploader"] section{background:#fff!important;border:1px dashed var(--line)!important;}
+[data-testid="stSlider"] [data-testid="stThumbValue"]{color:var(--accent)!important;}
+[data-testid="stAlertContainer"]{background:#FFF9EC!important;border:1px solid var(--line)!important;border-left:4px solid var(--sand)!important;border-radius:2px!important;}
+[data-testid="stAlertContainer"] *{color:var(--ink)!important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){background:#FBEAE5!important;border-left-color:var(--accent)!important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){background:#FFF4D6!important;border-left-color:#C9A227!important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]){background:#EEF3EA!important;border-left-color:var(--olive)!important;}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]){background:#EAF2E3!important;border-left-color:var(--olive)!important;}
+[data-testid="stTooltipIcon"] svg,[data-testid="stTooltipIcon"] button{color:var(--muted)!important;stroke:var(--muted)!important;opacity:1!important;}
+[data-testid="stTooltipContent"],[data-baseweb="tooltip"] div{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important;}
+[data-testid="stTooltipContent"] *{color:var(--ink)!important;}
+[data-testid="stFileUploader"] section,[data-testid="stFileUploaderDropzone"]{background:#fff!important;border:1px dashed var(--line)!important;}
 [data-testid="stFileUploader"] *{color:var(--ink)!important;}
 [data-testid="stFileUploader"] button{background:var(--ink)!important;}
-[data-testid="stFileUploader"] button span,[data-testid="stFileUploader"] button p{color:var(--paper)!important;}
-.stDownloadButton>button{background:var(--ink);border:0;border-radius:2px;font-family:'IBM Plex Mono',monospace;}
-.stDownloadButton>button p{color:var(--paper);}
+[data-testid="stFileUploader"] button *{color:var(--paper)!important;}
+.stDownloadButton>button,[data-testid="stDownloadButton"] button{background:var(--ink)!important;border:0!important;border-radius:2px!important;font-family:'IBM Plex Mono',monospace;}
+.stDownloadButton>button *,[data-testid="stDownloadButton"] button *{color:var(--paper)!important;}
 .callout{background:#FFF9EC;border:1px solid var(--accent);padding:.9rem 1.1rem;font-size:.92rem;margin-bottom:1rem;line-height:1.5;}
+.quota{font-family:'IBM Plex Mono',monospace;font-size:.78rem;border:1px solid var(--ink);background:var(--card);padding:.55rem .9rem;margin-bottom:1rem;display:block;width:100%;box-sizing:border-box;}
+.quota .dots{color:var(--accent);letter-spacing:.2em;margin-right:.5rem;}
+.quota .qdim{color:var(--muted);}
 @media(max-width:760px){.angle,.cols2,.dim{grid-template-columns:1fr;}.brief{padding:1.4rem 1.2rem;}h1.hero{font-size:2rem;}}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
@@ -120,12 +150,8 @@ if not GOOGLE_KEY:
 PRIMARY_MODEL = secret("GEMINI_MODEL") or "gemini-3.8-flash"
 FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
 MAX_ITEMS = 120
-SESSION_LIMIT = 6   # free "run credits" per visitor session (compare costs 2)
+SESSION_LIMIT = 5   # free runs per visitor (every brief or comparison = 1 run)
 DAILY_LIMIT = 150   # free analyses per day across everyone
-
-if "sid" not in st.session_state:
-    st.session_state.sid = uuid.uuid4().hex[:12]
-    st.session_state.runs = 0
 
 depth_map = {
     "Quick Scan": "Be brief: 2-3 points per section, 3 messaging angles.",
@@ -245,13 +271,17 @@ SCHEMAS = {"brief": Brief, "compare": Comparison}
 
 
 # ── Gemini helpers ─────────────────────────────────────────────────────────────
+class Busy(Exception):
+    """Gemini is overloaded (503/429). Not the user's fault; the run is not counted."""
+
+
 def _call_gemini(prompt, api_key, schema, temperature):
     client = genai.Client(api_key=api_key)
     config = types.GenerateContentConfig(
         response_mime_type="application/json", response_schema=schema, temperature=temperature)
-    last_err = None
+    last_err, overloaded = None, False
     for model in dict.fromkeys([PRIMARY_MODEL, *FALLBACK_MODELS]):
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 resp = client.models.generate_content(model=model, contents=prompt, config=config)
                 parsed = resp.parsed or schema.model_validate_json(resp.text)
@@ -259,11 +289,14 @@ def _call_gemini(prompt, api_key, schema, temperature):
             except Exception as e:  # noqa: BLE001
                 last_err, msg = e, str(e)
                 if "404" in msg or "NOT_FOUND" in msg:
-                    break
-                if any(c in msg for c in ("429", "503", "UNAVAILABLE")):
-                    time.sleep(1.5 * (attempt + 1))
+                    break  # model gone: try the next one
+                if any(c in msg for c in ("429", "500", "503", "UNAVAILABLE", "overloaded", "DEADLINE")):
+                    overloaded = True
+                    time.sleep(2 + 3 * attempt + random.random())  # back off, then retry
                     continue
                 raise
+    if overloaded:
+        raise Busy("Gemini is overloaded")
     raise last_err
 
 
@@ -451,6 +484,14 @@ def E(x):
     return html.escape(str(x if x is not None else ""))
 
 
+def show_error(e):
+    if isinstance(e, Busy):
+        st.info("⏳ Google's AI is swamped right now (their side, not yours). This run wasn't counted. "
+                "Try again in a minute, or add your own free Gemini key above.")
+    else:
+        st.error(f"Something went wrong: {e}")
+
+
 def norm(s):
     return re.sub(r"\W+", " ", s.lower()).strip()
 
@@ -598,11 +639,31 @@ def render_compare(res):
     st.markdown("".join(h), unsafe_allow_html=True)
 
 
+def runs_for_sid(sid):
+    """Runs this visitor id used in the last 24h (survives page refresh if the URL keeps ?sid=)."""
+    if SB_URL and SB_KEY:
+        try:
+            since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            r = requests.get(f"{SB_URL}/rest/v1/runs?select=id&session_id=eq.{sid}&created_at=gte.{since}",
+                             headers=_sbh({"Prefer": "count=exact", "Range": "0-0"}), timeout=6)
+            return int(r.headers["Content-Range"].split("/")[-1])
+        except Exception:
+            pass
+    return 0
+
+
+if "sid" not in st.session_state:
+    sid = re.sub(r"[^a-z0-9]", "", str(st.query_params.get("sid", "")).lower())[:16] or uuid.uuid4().hex[:12]
+    st.query_params["sid"] = sid
+    st.session_state.sid = sid
+    st.session_state.runs = runs_for_sid(sid)
+
 # ── Masthead + shared settings ─────────────────────────────────────────────────
 st.markdown(f"""<div class="mast">{APP_NAME} · customer voice → strategy brief</div>
 <h1 class="hero">Turn what customers say into what to do next.</h1>
 <p class="sub">Bring your own CRM reviews or survey answers, or pull public reviews for any brand. Get a sourced brief: messaging angles in customers' own words, claims to avoid, and where competitors leave the door open.</p>""",
             unsafe_allow_html=True)
+quota_box = st.empty()
 
 own_key = ""
 with st.expander("🔑 Use your own free Gemini key (no usage limits)"):
@@ -624,8 +685,7 @@ def caps_ok(cost=1):
     if not capped:
         return True
     if st.session_state.runs + cost > SESSION_LIMIT:
-        st.warning(f"This needs {cost} of your free credits and you have {max(SESSION_LIMIT - st.session_state.runs, 0)} "
-                   "left this session. Add your own free Gemini key above to keep going.")
+        st.warning(f"You've used all {SESSION_LIMIT} free runs. Add your own free Gemini key above to keep going.")
         return False
     if runs_today() >= DAILY_LIMIT:
         st.warning("Today's free capacity is used up. Come back tomorrow, or add your own Gemini key above.")
@@ -641,6 +701,10 @@ def source_counts(items):
 
 
 def find(prefix, name, hint):
+    if capped:
+        st.session_state.finds = st.session_state.get("finds", 0) + 1
+        if st.session_state.finds > 25:
+            raise RuntimeError("Lookup limit reached for this session. Add your own Gemini key above to keep going.")
     st.session_state[f"{prefix}_cands"] = find_companies(name.strip(), hint.strip(), active_key)
     st.session_state[f"{prefix}_q"] = name.strip()
 
@@ -705,7 +769,7 @@ with t1:
                 with st.spinner("Looking for matches..."):
                     find("s", name, hint)
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                show_error(e)
     sel = pick("s", "2 · Which one did you mean?")
     if sel and st.button("3 · Write the brief", key="s_go", use_container_width=True):
         subject, desc = sel
@@ -730,7 +794,7 @@ with t1:
                     st.session_state.runs += 1
                     log_run(subject, len(items), ",".join(source_counts(items)), time.time() - t0, "brief")
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                show_error(e)
 
 with t2:
     ca, cb = st.columns(2)
@@ -747,17 +811,16 @@ with t2:
                     find("a", na_, ha_)
                     find("b", nb_, hb_)
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                show_error(e)
     pa, pb = st.columns(2)
     with pa:
         A = pick("a", "2 · Brand A: which one?")
     with pb:
         B = pick("b", "2 · Brand B: which one?")
-    st.caption("A comparison uses 2 of your free credits.")
     if A and B and st.button("3 · Write the comparison", key="c_go", use_container_width=True):
         if not srcs:
             st.warning("Pick at least one source.")
-        elif caps_ok(2):
+        elif caps_ok(1):
             try:
                 t0 = time.time()
                 with st.spinner("Pulling reviews for both brands..."):
@@ -781,10 +844,10 @@ with t2:
                     st.session_state.result = {"kind": "compare", "data": data, "model": model, "industry": industry,
                                                "names": (A[0], B[0]), "counts": (len(ia), len(ib)), "items": items,
                                                "window": window}
-                    st.session_state.runs += 2
+                    st.session_state.runs += 1
                     log_run(f"{A[0]} vs {B[0]}", len(items), ",".join(source_counts(items)), time.time() - t0, "compare")
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                show_error(e)
 
 with t3:
     st.markdown('<div class="callout"><b>Built for your own data.</b> Paste or upload CRM reviews, survey answers or '
@@ -863,7 +926,7 @@ with t3:
                     st.session_state.runs += 1
                     log_run("Own data", len(items), ",".join(source_counts(items)), time.time() - t0, "own")
             except Exception as e:
-                st.error(f"Something went wrong: {e}")
+                show_error(e)
 
 # ── The brief ──────────────────────────────────────────────────────────────────
 res = st.session_state.get("result")
@@ -888,3 +951,12 @@ if stats:
         b.metric("Unique visitors", f"{stats['visitors']:,}")
         c.metric("Reviews analyzed", f"{stats['reviews']:,}")
         d.metric("Avg time (sec)", stats["avg_secs"])
+
+left = max(SESSION_LIMIT - st.session_state.runs, 0)
+if capped:
+    quota_box.markdown(
+        f'<div class="quota"><span class="dots">{"●" * left}{"○" * (SESSION_LIMIT - left)}</span>'
+        f'<b>{left} of {SESSION_LIMIT}</b> free runs left <span class="qdim">· every brief or comparison = 1 run · '
+        f'add your own free Gemini key for unlimited</span></div>', unsafe_allow_html=True)
+else:
+    quota_box.markdown('<div class="quota"><b>∞</b> Unlimited runs with your own Gemini key</div>', unsafe_allow_html=True)
