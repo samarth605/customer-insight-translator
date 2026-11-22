@@ -1,11 +1,15 @@
 import html
+import ipaddress
 import json
 import re
+import socket
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import urlparse
 
+import pandas as pd
 import requests
 import streamlit as st
 from google import genai
@@ -63,6 +67,34 @@ a.rc:hover{text-decoration:underline;}
 .stButton>button p{color:var(--paper);}
 .stButton>button:hover{background:var(--accent);}
 .stTabs [data-baseweb="tab"]{font-family:'IBM Plex Mono',monospace;font-size:.8rem;}
+:root{color-scheme:light;}
+.stApp{color-scheme:light;}
+[data-testid="stWidgetLabel"] p,[data-testid="stWidgetLabel"] label,[data-testid="stWidgetLabel"] span{color:var(--ink)!important;font-weight:500;}
+.stTextInput input,.stTextArea textarea{background:#fff!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
+[data-baseweb="input"],[data-baseweb="base-input"],[data-baseweb="textarea"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;}
+[data-baseweb="select"]>div{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;}
+[data-baseweb="select"] div,[data-baseweb="select"] span,[data-baseweb="select"] input{color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
+[data-baseweb="select"] svg{fill:var(--ink)!important;}
+[data-baseweb="tag"]{background:var(--accent)!important;}
+[data-baseweb="tag"] span,[data-baseweb="tag"] svg{color:#fff!important;fill:#fff!important;-webkit-text-fill-color:#fff!important;}
+[data-baseweb="popover"] ul,[data-baseweb="popover"] li,[data-baseweb="menu"]{background:#fff!important;color:var(--ink)!important;}
+[data-baseweb="popover"] li:hover{background:var(--paper)!important;}
+input::placeholder,textarea::placeholder{color:#9A9488!important;-webkit-text-fill-color:#9A9488!important;}
+.stTabs [data-baseweb="tab"] p{color:var(--muted)!important;}
+.stTabs [aria-selected="true"] p{color:var(--accent)!important;}
+[data-testid="stExpander"]{background:var(--card);border:1px solid var(--line);border-radius:2px;}
+[data-testid="stExpander"] summary p,[data-testid="stExpander"] summary span{color:var(--ink)!important;}
+[data-testid="stRadio"] label p{color:var(--ink)!important;}
+[data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] *{color:var(--muted)!important;}
+[data-testid="stMetric"] *,[data-testid="stSpinner"] *{color:var(--ink)!important;}
+[data-testid="stTickBar"] *{color:var(--muted)!important;}
+[data-testid="stFileUploader"] section{background:#fff!important;border:1px dashed var(--line)!important;}
+[data-testid="stFileUploader"] *{color:var(--ink)!important;}
+[data-testid="stFileUploader"] button{background:var(--ink)!important;}
+[data-testid="stFileUploader"] button span,[data-testid="stFileUploader"] button p{color:var(--paper)!important;}
+.stDownloadButton>button{background:var(--ink);border:0;border-radius:2px;font-family:'IBM Plex Mono',monospace;}
+.stDownloadButton>button p{color:var(--paper);}
+.callout{background:#FFF9EC;border:1px solid var(--accent);padding:.9rem 1.1rem;font-size:.92rem;margin-bottom:1rem;line-height:1.5;}
 @media(max-width:760px){.angle,.cols2,.dim{grid-template-columns:1fr;}.brief{padding:1.4rem 1.2rem;}h1.hero{font-size:2rem;}}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
@@ -84,8 +116,9 @@ if not GOOGLE_KEY:
     st.error("GOOGLE_API_KEY missing. Add it in Streamlit Secrets.")
     st.stop()
 
-PRIMARY_MODEL = "gemini-3.6-flash"  # stable names only; previews get retired
-FALLBACK_MODEL = "gemini-2.5-flash"
+# Override without redeploying: add GEMINI_MODEL = "..." in Streamlit Secrets.
+PRIMARY_MODEL = secret("GEMINI_MODEL") or "gemini-3.8-flash"
+FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
 MAX_ITEMS = 120
 SESSION_LIMIT = 6   # free "run credits" per visitor session (compare costs 2)
 DAILY_LIMIT = 150   # free analyses per day across everyone
@@ -217,7 +250,7 @@ def _call_gemini(prompt, api_key, schema, temperature):
     config = types.GenerateContentConfig(
         response_mime_type="application/json", response_schema=schema, temperature=temperature)
     last_err = None
-    for model in (PRIMARY_MODEL, FALLBACK_MODEL):
+    for model in dict.fromkeys([PRIMARY_MODEL, *FALLBACK_MODELS]):
         for attempt in range(2):
             try:
                 resp = client.models.generate_content(model=model, contents=prompt, config=config)
@@ -256,12 +289,16 @@ RULES = """Rules:
 - Percentages: sentiment must sum to 100; personas must sum to 100."""
 
 
-def build_brief_prompt(industry, subject, desc, body, depth):
+def build_brief_prompt(industry, subject, desc, body, depth, own=False):
+    own_rule = ("\nThis is the company's OWN customer feedback (CRM, survey or support). Write for its marketing lead: "
+                "'Say this' is messaging for its own campaigns, 'Next moves' is what to fix or double down on. "
+                "Use the company context to judge what matters.\n") if own else ""
     return f"""You are a senior brand strategist in the {industry} industry writing a one-page brief.
 
 Subject: {subject}{' - ' + desc if desc else ''}
 Turn the customer feedback below into a brief: what customers value, what is going wrong and why, messaging angles that use customers' own words, and claims to avoid.
 
+{own_rule}
 {RULES}
 - {depth_map[depth]} Give 2-4 avoid-items.
 
@@ -286,6 +323,66 @@ Deliver: head-to-head on 5-7 decision factors customers care about, 3-5 position
 
 Feedback (numbered, brand-tagged):
 {body}"""
+
+
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+PHONE_RE = re.compile(r"(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}")
+
+
+def redact(t):
+    """Mask emails and common phone formats before text leaves the app."""
+    return PHONE_RE.sub("[phone]", EMAIL_RE.sub("[email]", str(t)))
+
+
+def _public_host(host):
+    try:
+        for info in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _strip(t):
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", t or ""))).strip()
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def fetch_page_context(url):
+    """Read a company page's title, description and headlines. Public hosts only. Returns '' on any problem."""
+    try:
+        u = urlparse(url if "://" in url else "https://" + url)
+        for _ in range(3):  # follow a few redirects, re-checking the host each time
+            if u.scheme not in ("http", "https") or not u.hostname or not _public_host(u.hostname):
+                return ""
+            r = requests.get(u.geturl(), timeout=8, stream=True, allow_redirects=False,
+                             headers={"User-Agent": "Mozilla/5.0 (compatible; VoiceBrief)"})
+            if r.is_redirect and r.headers.get("Location"):
+                u = urlparse(requests.compat.urljoin(u.geturl(), r.headers["Location"]))
+                continue
+            break
+        else:
+            return ""
+        raw = b""
+        for chunk in r.iter_content(65536):
+            raw += chunk
+            if len(raw) > 300_000:
+                break
+        t = raw.decode(r.encoding or "utf-8", errors="replace")
+        title = _strip((re.search(r"<title[^>]*>(.*?)</title>", t, re.S | re.I) or [None, ""])[1])
+        metas = []
+        for m in re.findall(r"<meta\s[^>]*>", t, re.I):
+            nm = re.search(r"(?:name|property)=[\"']([^\"']+)", m, re.I)
+            ct = re.search(r"content=[\"']([^\"']*)", m, re.I)
+            if nm and ct and nm.group(1).lower() in ("description", "og:description"):
+                metas.append(_strip(ct.group(1)))
+        heads = [_strip(h) for h in re.findall(r"<h[12][^>]*>(.*?)</h[12]>", t, re.S | re.I)[:6]]
+        out = f"Company page title: {title}. Description: {' '.join(metas[:2])}. Headlines: {' | '.join(h for h in heads if h)}."
+        return out[:1200] if (title or metas or heads) else ""
+    except Exception:
+        return ""
 
 
 # ── Usage logging + caps (Supabase optional; falls back to in-memory) ──────────
@@ -504,7 +601,7 @@ def render_compare(res):
 # ── Masthead + shared settings ─────────────────────────────────────────────────
 st.markdown(f"""<div class="mast">{APP_NAME} · customer voice → strategy brief</div>
 <h1 class="hero">Turn what customers say into what to do next.</h1>
-<p class="sub">Pull recent public reviews, or paste your own. Get a sourced brief: messaging angles in customers' own words, claims to avoid, and where competitors leave the door open.</p>""",
+<p class="sub">Bring your own CRM reviews or survey answers, or pull public reviews for any brand. Get a sourced brief: messaging angles in customers' own words, claims to avoid, and where competitors leave the door open.</p>""",
             unsafe_allow_html=True)
 
 own_key = ""
@@ -572,16 +669,34 @@ def numbered(items, with_brand=None):
 def paste_items(text):
     parts = [p.strip() for p in re.split(r"\n+", text) if len(p.strip()) >= 15]
     parts = parts or [text.strip()[:2000]]
-    return [{"source": "Pasted", "text": p[:800], "url": "", "date": ""} for p in parts[:MAX_ITEMS]]
+    return [{"source": "Pasted", "text": redact(p)[:800], "url": "", "date": ""} for p in parts[:MAX_ITEMS]]
+
+
+def csv_items(df, text_col, date_col, months):
+    d = df.copy()
+    d[text_col] = d[text_col].astype(str)
+    d = d[d[text_col].str.len() >= 15]
+    dated = bool(date_col) and date_col != "(none)"
+    if dated:
+        d["_dt"] = pd.to_datetime(d[date_col], errors="coerce", utc=True)
+        if months:
+            d = d[d["_dt"] >= pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=30.44 * months)]
+        d = d.sort_values("_dt", ascending=False)
+    out = []
+    for _, r in d.head(MAX_ITEMS).iterrows():
+        dt = r["_dt"] if dated else None
+        out.append({"source": "CRM upload", "text": redact(r[text_col])[:800], "url": "",
+                    "date": dt.strftime("%Y-%m-%d") if dt is not None and pd.notna(dt) else ""})
+    return out
 
 
 # ── Input tabs ─────────────────────────────────────────────────────────────────
-t1, t2, t3 = st.tabs(["📝 Brief on one brand", "⚔️ Compare two brands", "📋 Use your own data"])
+t3, t1, t2 = st.tabs(["🏢 Analyze your own feedback", "📝 Brief on any brand", "⚔️ Compare two brands"])
 
 with t1:
     c1, c2 = st.columns(2)
     name = c1.text_input("Brand", key="s_name", placeholder="e.g. Lucid Motors")
-    hint = c2.text_input("Website or country (optional)", key="s_hint")
+    hint = c2.text_input("Help me find the right one (optional)", key="s_hint", placeholder="Website or country, e.g. lucidmotors.com", help="Several companies can share a name. Add a website or country and we will show the right match.")
     if st.button("1 · Find brand", key="s_find", use_container_width=True):
         if not name.strip():
             st.warning("Type a brand name first.")
@@ -620,9 +735,9 @@ with t1:
 with t2:
     ca, cb = st.columns(2)
     na_ = ca.text_input("Brand A", key="a_name", placeholder="e.g. Lucid Motors")
-    ha_ = ca.text_input("Website or country (optional)", key="a_hint")
+    ha_ = ca.text_input("Help me find the right one (optional)", key="a_hint", placeholder="Website or country", help="Several companies can share a name. Add a website or country and we will show the right match.")
     nb_ = cb.text_input("Brand B", key="b_name", placeholder="e.g. Rivian")
-    hb_ = cb.text_input("Website or country (optional)", key="b_hint")
+    hb_ = cb.text_input("Help me find the right one (optional)", key="b_hint", placeholder="Website or country", help="Several companies can share a name. Add a website or country and we will show the right match.")
     if st.button("1 · Find both brands", key="c_find", use_container_width=True):
         if not (na_.strip() and nb_.strip()):
             st.warning("Type both brand names first.")
@@ -672,24 +787,81 @@ with t2:
                 st.error(f"Something went wrong: {e}")
 
 with t3:
-    about = st.text_input("What is this feedback about? (optional)", key="p_about", placeholder="e.g. our spring survey")
-    raw = st.text_area("Paste reviews, comments or survey answers (one per line)", height=220, key="p_raw")
+    st.markdown('<div class="callout"><b>Built for your own data.</b> Paste or upload CRM reviews, survey answers or '
+                'support tickets. Tell us what you sell so the brief reads the feedback in context. '
+                'Emails and common phone formats are masked before analysis.</div>', unsafe_allow_html=True)
+    o1, o2 = st.columns(2)
+    own_name = o1.text_input("Your company or product", key="o_name", placeholder="e.g. Acme Smart Thermostat")
+    own_url = o2.text_input("Company page link (optional)", key="o_url", placeholder="https://acme.com",
+                            help="We read the page title and description so the brief knows what you sell.")
+    own_desc = st.text_area("What do you sell, and to whom?", key="o_desc", height=90,
+                            placeholder="e.g. A smart thermostat for renters. Buyers are mostly 25-40, in apartments, price-sensitive.")
+    st.caption("Add the description, the link, or both. At least one is needed.")
+    src_mode = st.radio("Your feedback", ["Paste text", "Upload CSV"], horizontal=True, key="o_mode")
+    raw, df, text_col, date_col = "", None, None, None
+    if src_mode == "Paste text":
+        raw = st.text_area("Paste reviews, comments or survey answers (one per line)", height=200, key="p_raw")
+    else:
+        up = st.file_uploader("CRM or survey export (.csv, max 5 MB)", type=["csv"], key="o_csv")
+        if up is not None:
+            if up.size > 5_000_000:
+                st.warning("That file is over 5 MB. Export a smaller date range.")
+            else:
+                try:
+                    df = pd.read_csv(up, encoding_errors="replace")
+                    df.columns = [str(c) for c in df.columns]
+                except Exception as e:
+                    st.error(f"Couldn't read that CSV: {e}")
+                    df = None
+        if df is not None and len(df.columns):
+            cols = list(df.columns)
+            guess = max(cols, key=lambda c: df[c].astype(str).str.len().mean())
+            dguess = next((c for c in cols if any(k in c.lower() for k in ("date", "time", "created"))), "(none)")
+            x1, x2 = st.columns(2)
+            text_col = x1.selectbox("Which column has the feedback text?", cols, index=cols.index(guess), key="o_tcol")
+            dopts = ["(none)"] + cols
+            date_col = x2.selectbox("Date column (optional, enables the review window)", dopts,
+                                    index=dopts.index(dguess), key="o_dcol")
+            st.caption(f"{len(df):,} rows found.")
+    st.caption("Heads-up: on the free Gemini tier, Google may use inputs to improve its products. "
+               "Remove names and sensitive data first.")
     if st.button("Write the brief", key="p_go", use_container_width=True):
-        if not raw.strip():
-            st.warning("Paste some feedback first.")
+        if not own_name.strip():
+            st.warning("Add your company or product name.")
+        elif not (own_desc.strip() or own_url.strip()):
+            st.warning("Tell us what you sell: add a short description or a link to your company page.")
         elif caps_ok(1):
             try:
                 t0 = time.time()
-                items = paste_items(raw)
-                subject = about.strip() or "Pasted feedback"
-                with st.spinner("Writing the brief..."):
-                    data, model = run_analysis(
-                        build_brief_prompt(industry, subject, "", numbered(items), depth), active_key, "brief")
-                st.session_state.result = {"kind": "single", "data": data, "model": model, "industry": industry,
-                                           "subject": subject, "items": items, "window": "",
-                                           "source_counts": source_counts(items)}
-                st.session_state.runs += 1
-                log_run(subject, len(items), "paste", time.time() - t0, "paste")
+                items, err = [], ""
+                if src_mode == "Paste text":
+                    if raw.strip():
+                        items = paste_items(raw)
+                    else:
+                        err = "Paste some feedback first."
+                elif df is None:
+                    err = "Upload a CSV first."
+                else:
+                    items = csv_items(df, text_col, date_col, months)
+                    if len(items) < 3:
+                        err = "Fewer than 3 usable rows. Check the text column, or set Review window to All time."
+                if err:
+                    st.warning(err)
+                else:
+                    ctx = fetch_page_context(own_url.strip()) if own_url.strip() else ""
+                    if own_url.strip() and not ctx:
+                        st.caption("Couldn't read that page, so I'm using your description only.")
+                    desc = " ".join(x for x in (own_desc.strip(), ctx) if x)[:1800]
+                    with st.spinner("Writing the brief..."):
+                        data, model = run_analysis(
+                            build_brief_prompt(industry, own_name.strip(), desc, numbered(items), depth, own=True),
+                            active_key, "brief")
+                    dated = src_mode == "Upload CSV" and date_col not in (None, "(none)")
+                    st.session_state.result = {"kind": "single", "data": data, "model": model, "industry": industry,
+                                               "subject": own_name.strip(), "items": items,
+                                               "window": window if dated else "", "source_counts": source_counts(items)}
+                    st.session_state.runs += 1
+                    log_run("Own data", len(items), ",".join(source_counts(items)), time.time() - t0, "own")
             except Exception as e:
                 st.error(f"Something went wrong: {e}")
 
