@@ -47,6 +47,25 @@ def test_invalid_references_are_not_treated_as_evidence():
     assert clean['loved']==[] and len(notes)==1
 
 
+@pytest.mark.parametrize('hook',[
+    'Go further on a single charge with unmatched energy efficiency.',
+    'Navigate winter roads with confidence and advanced driving assistance.',
+])
+def test_live_observed_promotional_claims_are_withheld(hook):
+    result=single_result()
+    result['data']['angles'][0]['hook']=hook
+    clean,notes=review_analysis(result['data'],result['items'])
+    assert clean['angles']==[]
+    assert notes[0]['title']=='Messaging suggestion withheld'
+
+
+def test_neutral_driving_subscription_explanation_is_not_a_capability_promise():
+    result=single_result()
+    result['data']['angles'][0]['hook']='Understand your FSD subscription and pricing.'
+    clean,notes=review_analysis(result['data'],result['items'])
+    assert clean['angles']==result['data']['angles'] and not notes
+
+
 def test_comparison_messaging_cannot_borrow_another_brands_quote():
     r=comparison_result();r['data']['angles'][0]['evidence_ids']=[16]
     clean,notes=review_analysis(r['data'],r['items'],'compare')
