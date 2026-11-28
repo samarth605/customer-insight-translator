@@ -679,9 +679,10 @@ else:
 
 reference = Path(__file__).parent / "reference_case" / "report.pdf"
 if reference.is_file():
-    with st.expander("Read a reference case"):
-        st.caption("A completed analysis selected as a reference. This is a saved report, not a new analysis.")
-        st.download_button("Download the reference PDF", data=reference.read_bytes(), file_name="voicebrief-reference-case.pdf", mime="application/pdf", on_click="ignore")
+    with st.expander("Read a sample brief: Tesla"):
+        st.write("Tesla, Inc. / 120 public YouTube comments / 28 November 2026")
+        st.caption("Original AI-generated output from a live app run, with linked feedback and a source appendix. The sample includes off-topic and promotional comments. Some suggested claims go beyond what the cited feedback establishes; review the evidence before using the findings or messaging.")
+        st.download_button("Download the Tesla sample (PDF)", data=reference.read_bytes(), file_name="voicebrief-tesla-sample.pdf", mime="application/pdf", on_click="ignore")
 
 left = max(SESSION_LIMIT - st.session_state.runs, 0)
 quota_box.markdown(f'<p class="quota-inline">{left} of {SESSION_LIMIT} shared runs available</p>' if capped else '<p class="quota-inline">Using your Gemini key</p>', unsafe_allow_html=True)
