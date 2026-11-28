@@ -14,6 +14,14 @@ CREATOR=re.compile(r'\b(great|excellent|amazing|fantastic|terrific|best|thorough
 EXPERIENCE=re.compile(r'\b(i (?:own|bought|drive|use|ordered|tried|tested|paid|have had)|my (?:car|vehicle|model|app|order|subscription)|price|cost|expensive|cheap|battery|charging|range|comfort|quiet|noise|seat|tire|tyre|brake|pickup|drop[- ]?off|support|service|delivery|setup|feature|privacy|subscription|refund|quality|performance|fsd|software|bug|screen|legroom|sunroof|warranty|reliable|unreliable|problem|difficult|frustrat\w*)\b',re.I)
 RISKY_COPY=re.compile(r'\b(quietest|safest|fastest|cheapest|best[- ]in[- ]class|best in (?:the|its) class|risk[- ]free|guaranteed|guarantees|guarantee|zero risk|a fraction of the cost)\b|\b(?:let|trust)\b.{0,40}\b(?:fsd|full self[- ]driving)\b.{0,45}\b(?:handle|drive|take over)\b',re.I)
 UNMEASURED_OUTCOME=re.compile(r'\b(?:drive[sn]?|driving|boost[sn]?|increase[sn]?|improve[sn]?)\s+(?:strong\s+)?(?:conversion|conversions|revenue|sales growth)\b',re.I)
+UNPROVEN_COMPARATIVE=re.compile(r'\b(unmatched|unrivalled|unrivaled|unsurpassed|outperforms?|market[- ]leading)\b',re.I)
+DRIVING_SYSTEM=re.compile(r'\b(fsd|full self[- ]driving|advanced driving assistance|autonomous driving|driver assistance)\b',re.I)
+DRIVING_PROMISE=re.compile(r'\b(handle|navigate|safely|safety|confidence|winter|mountain|road trips?|hands[- ]free|all conditions)\b',re.I)
+
+
+def _risky_messaging(text):
+    return bool(RISKY_COPY.search(text) or UNPROVEN_COMPARATIVE.search(text)
+                or (DRIVING_SYSTEM.search(text) and DRIVING_PROMISE.search(text)))
 
 
 def exclusion_reason(item):
@@ -84,7 +92,7 @@ def review_analysis(data,items,kind='single',subject='the subject'):
     for angle in supported(data.get('angles',[]),'Messaging suggestion'):
         ids=angle['evidence_ids'];reason=''
         if kind=='compare' and any(items[i-1].get('brand')!=angle.get('brand') for i in ids):reason='The cited feedback did not all belong to the indicated brand.'
-        elif RISKY_COPY.search(angle.get('hook','')):reason='The suggestion used a comparative, guaranteed or driving-capability claim that public opinions alone cannot establish.'
+        elif _risky_messaging(angle.get('hook','')):reason='The suggestion used a comparative, guaranteed or driving-capability claim that public opinions alone cannot establish.'
         elif not _exact(angle.get('customer_words',''),ids,items):reason='The purported customer wording was not an exact phrase in its cited feedback.'
         if reason:notes.append({'title':'Messaging suggestion withheld','detail':reason,'ids':ids})
         else:angles.append(angle)
