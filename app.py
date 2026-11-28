@@ -7,6 +7,7 @@ import socket
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -18,119 +19,12 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from sources import gather
+from report_view import render_report
 
 APP_NAME = "VoiceBrief"
-st.set_page_config(page_title=f"{APP_NAME} | customer voice to strategy brief", page_icon="📝", layout="wide")
+st.set_page_config(page_title=f"{APP_NAME} | customer voice to strategy brief", layout="wide")
+st.markdown("<style>" + (Path(__file__).parent / "assets" / "voicebrief.css").read_text(encoding="utf-8") + "</style>", unsafe_allow_html=True)
 
-CSS = """<style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
-:root{--paper:#F6F1E7;--card:#FBF8F1;--ink:#1B1B1B;--muted:#6B665C;--line:#D9D0BC;--accent:#B4472A;--olive:#5B6B4F;--sand:#CDBF9F;}
-.stApp{background:var(--paper);}
-html,body,.stApp,[class*="css"]{font-family:'Inter',system-ui,sans-serif;color:var(--ink);}
-#MainMenu,footer,header{visibility:hidden;}
-.block-container{max-width:1020px;padding-top:2rem;padding-bottom:4rem;}
-.mast{font-family:'IBM Plex Mono',monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.6rem;}
-h1.hero{font-family:'Fraunces',Georgia,serif;font-weight:800;font-size:2.7rem;line-height:1.08;margin:0 0 .6rem 0;letter-spacing:-.02em;}
-.sub{color:var(--muted);max-width:660px;font-size:1.02rem;margin-bottom:1.6rem;}
-.brief{background:var(--card);border:1px solid var(--line);padding:2.2rem 2.6rem;margin-top:1.6rem;box-shadow:0 1px 0 var(--line),0 10px 30px -18px rgba(0,0,0,.25);}
-.brief .meta{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:.8rem;margin-bottom:1.4rem;}
-.brief h2.hl{font-family:'Fraunces',serif;font-weight:600;font-size:1.9rem;line-height:1.2;margin:0 0 .8rem 0;}
-.lede{font-size:1.02rem;line-height:1.6;color:#33302B;margin-bottom:1rem;}
-.bar{display:flex;height:9px;overflow:hidden;background:var(--line);}
-.bar span{display:block;height:100%;}
-.barkey{font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--muted);margin-top:.4rem;}
-.sec{margin-top:2.2rem;}
-.sec-h{display:flex;align-items:baseline;gap:.8rem;border-top:2px solid var(--ink);padding-top:.7rem;margin-bottom:1rem;}
-.sec-h .num{font-family:'IBM Plex Mono',monospace;font-size:.75rem;color:var(--accent);}
-.sec-h h2{font-family:'Fraunces',serif;font-size:1.35rem;font-weight:600;margin:0;}
-.pt{padding:.7rem 0;border-bottom:1px dashed var(--line);}
-.pt-t{font-weight:600;margin-bottom:.2rem;}
-.pt-d{color:#47433C;font-size:.95rem;line-height:1.55;}
-.rcs{margin-top:.35rem;}
-.rc{font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--accent);margin-right:.8rem;text-decoration:none;}
-a.rc:hover{text-decoration:underline;}
-.tag{font-family:'IBM Plex Mono',monospace;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--line);padding:.08rem .4rem;margin-left:.4rem;color:var(--muted);}
-.tag.high{color:var(--accent);border-color:var(--accent);}
-.tag.medium{color:#8A6A12;border-color:#8A6A12;}
-.tag.low{color:var(--olive);border-color:var(--olive);}
-.tag.ok{color:var(--olive);border-color:var(--olive);}
-.angle{display:grid;grid-template-columns:1.5fr 1fr;gap:1.6rem;padding:1rem 0;border-bottom:1px dashed var(--line);}
-.hook{font-family:'Fraunces',serif;font-size:1.25rem;font-weight:600;line-height:1.25;margin-bottom:.4rem;}
-.note{border-left:3px solid var(--accent);padding-left:.9rem;font-family:'Fraunces',serif;font-style:italic;color:#47433C;font-size:.98rem;}
-.notek{font-style:normal;margin-top:.4rem;}
-.cols2{display:grid;grid-template-columns:1fr 1fr;gap:2rem;}
-.bn{font-family:'Fraunces',serif;font-size:1.3rem;font-weight:600;margin-bottom:.5rem;}
-.dim{display:grid;grid-template-columns:150px 110px 1fr;gap:1rem;padding:.7rem 0;border-bottom:1px dashed var(--line);align-items:start;}
-.edge{font-family:'IBM Plex Mono',monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);}
-.gap{border:1px solid var(--line);background:#FFF9EC;padding:1rem 1.2rem;margin-bottom:.9rem;}
-.warn{border:1px solid var(--accent);color:var(--accent);padding:.6rem .9rem;font-size:.85rem;margin-bottom:1rem;}
-.stButton>button{background:var(--ink);border:0;border-radius:2px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;}
-.stButton>button p{color:var(--paper);}
-.stButton>button:hover{background:var(--accent);}
-.stTabs [data-baseweb="tab"]{font-family:'IBM Plex Mono',monospace;font-size:.8rem;}
-html,body{background:var(--paper)!important;}
-:root{color-scheme:light;}
-.stApp{color-scheme:light;}
-[data-testid="stWidgetLabel"] p,[data-testid="stWidgetLabel"] label,[data-testid="stWidgetLabel"] span{color:var(--ink)!important;font-weight:500;}
-[data-testid="stTab"],[data-testid="stTab"] *{color:var(--muted)!important;opacity:1!important;}
-[data-testid="stTab"]:hover,[data-testid="stTab"]:hover *{color:var(--ink)!important;}
-[data-testid="stTab"][aria-selected="true"],[data-testid="stTab"][aria-selected="true"] *{color:var(--accent)!important;}
-.stTabs [data-baseweb="tab"] p{color:var(--muted)!important;}
-.stTabs [aria-selected="true"] p{color:var(--accent)!important;}
-.stTextInput input,.stTextArea textarea{background:#fff!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
-[data-baseweb="input"],[data-baseweb="base-input"],[data-baseweb="textarea"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;box-shadow:none!important;}
-[data-testid$="RootElement"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;box-shadow:none!important;}
-[data-testid="stSelectbox"] [role="group"],[data-testid="stMultiSelect"] [role="group"]{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;box-shadow:none!important;}
-[data-testid="stSelectbox"] input,[data-testid="stMultiSelect"] input{background:transparent!important;color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
-[data-testid="stSelectbox"] button,[data-testid="stSelectbox"] svg,[data-testid="stMultiSelect"] button,[data-testid="stMultiSelect"] svg{color:var(--ink)!important;fill:var(--ink)!important;}
-[data-baseweb="select"]>div{background:#fff!important;border:1px solid var(--line)!important;border-radius:2px!important;}
-[data-baseweb="select"] div,[data-baseweb="select"] span,[data-baseweb="select"] input{color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
-[data-baseweb="select"] svg{fill:var(--ink)!important;}
-[data-tag],[data-baseweb="tag"]{background:var(--accent)!important;}
-[data-tag] *,[data-baseweb="tag"] *{color:#fff!important;fill:#fff!important;-webkit-text-fill-color:#fff!important;}
-[data-testid$="VirtualDropdown"],[data-baseweb="popover"] ul,[data-baseweb="menu"]{background:#fff!important;border:1px solid var(--line)!important;}
-[role="listbox"],[role="option"]{background:transparent!important;color:var(--ink)!important;}
-[role="option"] *,[data-baseweb="popover"] li{color:var(--ink)!important;-webkit-text-fill-color:var(--ink)!important;}
-[role="option"]:hover,[role="option"][data-selected="true"],[role="option"][data-focused="true"],[data-baseweb="popover"] li:hover{background:var(--paper)!important;}
-[data-testid="stRadioOption"] > div > div:first-child{background:#fff!important;border:1.5px solid var(--muted)!important;}
-[data-testid="stRadioOption"][data-selected="true"] > div > div:first-child{background:var(--accent)!important;border-color:var(--accent)!important;}
-[data-testid="stRadio"] label p,[data-testid="stRadioOption"] p{color:var(--ink)!important;}
-input::placeholder,textarea::placeholder{color:#9A9488!important;-webkit-text-fill-color:#9A9488!important;opacity:1!important;}
-[data-testid="stExpander"]{background:var(--card);border:1px solid var(--line);border-radius:2px;}
-[data-testid="stExpander"] summary p,[data-testid="stExpander"] summary span{color:var(--ink)!important;}
-[data-testid="stExpander"] details,[data-testid="stExpander"] summary,[data-testid="stExpander"] summary:hover,[data-testid="stExpander"] summary:focus,[data-testid="stExpander"] details[open]>summary{background:var(--card)!important;color:var(--ink)!important;}
-[data-testid="stExpander"] summary svg{color:var(--ink)!important;fill:var(--ink)!important;}
-.brief a.rc,.stApp a.rc{color:var(--accent)!important;}
-[data-testid="stCaptionContainer"]{opacity:1!important;}
-[data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] *{color:var(--muted)!important;}
-[data-testid="stMetric"] *,[data-testid="stSpinner"] *{color:var(--ink)!important;}
-[data-testid="stTickBar"] *{color:var(--muted)!important;}
-[data-testid="stSlider"] [data-testid="stThumbValue"]{color:var(--accent)!important;}
-[data-testid="stAlertContainer"]{background:#FFF9EC!important;border:1px solid var(--line)!important;border-left:4px solid var(--sand)!important;border-radius:2px!important;}
-[data-testid="stAlertContainer"] *{color:var(--ink)!important;}
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){background:#FBEAE5!important;border-left-color:var(--accent)!important;}
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){background:#FFF4D6!important;border-left-color:#C9A227!important;}
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]){background:#EEF3EA!important;border-left-color:var(--olive)!important;}
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]){background:#EAF2E3!important;border-left-color:var(--olive)!important;}
-[data-testid="stTooltipIcon"] svg,[data-testid="stTooltipIcon"] button{color:var(--muted)!important;stroke:var(--muted)!important;opacity:1!important;}
-[data-testid="stTooltipContent"],[data-baseweb="tooltip"] div{background:#fff!important;color:var(--ink)!important;border:1px solid var(--line)!important;}
-[data-testid="stTooltipContent"] *{color:var(--ink)!important;}
-[data-testid="stFileUploader"] section,[data-testid="stFileUploaderDropzone"]{background:#fff!important;border:1px dashed var(--line)!important;}
-[data-testid="stFileUploader"] *{color:var(--ink)!important;}
-[data-testid="stFileUploader"] button{background:var(--ink)!important;}
-[data-testid="stFileUploader"] button *{color:var(--paper)!important;}
-.stDownloadButton>button,[data-testid="stDownloadButton"] button{background:var(--ink)!important;border:0!important;border-radius:2px!important;font-family:'IBM Plex Mono',monospace;}
-.stDownloadButton>button *,[data-testid="stDownloadButton"] button *{color:var(--paper)!important;}
-.callout{background:#FFF9EC;border:1px solid var(--accent);padding:.9rem 1.1rem;font-size:.92rem;margin-bottom:1rem;line-height:1.5;}
-.quota{font-family:'IBM Plex Mono',monospace;font-size:.78rem;border:1px solid var(--ink);background:var(--card);padding:.55rem .9rem;margin-bottom:1rem;display:block;width:100%;box-sizing:border-box;}
-.quota .dots{color:var(--accent);letter-spacing:.2em;margin-right:.5rem;}
-.quota .qdim{color:var(--muted);}
-@media(max-width:760px){.angle,.cols2,.dim{grid-template-columns:1fr;}.brief{padding:1.4rem 1.2rem;}h1.hero{font-size:2rem;}}
-</style>"""
-st.markdown(CSS, unsafe_allow_html=True)
-
-
-# ── Secrets & settings ─────────────────────────────────────────────────────────
 def secret(name):
     try:
         return st.secrets[name]
@@ -142,9 +36,6 @@ GOOGLE_KEY = secret("GOOGLE_API_KEY")
 YT_KEY = secret("YOUTUBE_API_KEY")
 SB_URL = (secret("SUPABASE_URL") or "").rstrip("/")
 SB_KEY = secret("SUPABASE_KEY")
-if not GOOGLE_KEY:
-    st.error("GOOGLE_API_KEY missing. Add it in Streamlit Secrets.")
-    st.stop()
 
 # Override without redeploying: add GEMINI_MODEL = "..." in Streamlit Secrets.
 PRIMARY_MODEL = secret("GEMINI_MODEL") or "gemini-3.8-flash"
@@ -479,166 +370,6 @@ def sb_stats():
         return None
 
 
-# ── Rendering helpers (every model/API string goes through E) ──────────────────
-def E(x):
-    return html.escape(str(x if x is not None else ""))
-
-
-def show_error(e):
-    if isinstance(e, Busy):
-        st.info("⏳ Google's AI is swamped right now (their side, not yours). This run wasn't counted. "
-                "Try again in a minute, or add your own free Gemini key above.")
-    else:
-        st.error(f"Something went wrong: {e}")
-
-
-def norm(s):
-    return re.sub(r"\W+", " ", s.lower()).strip()
-
-
-def verbatim(phrase, ids, items):
-    p = norm(phrase)
-    return bool(p) and any(p in norm(items[i - 1]["text"]) for i in ids or [] if 1 <= i <= len(items))
-
-
-def has_evidence(ids, n):
-    return any(isinstance(i, int) and 1 <= i <= n for i in ids or [])
-
-
-def rcpts(ids, items):
-    out = []
-    for i in ids or []:
-        if isinstance(i, int) and 1 <= i <= len(items):
-            it = items[i - 1]
-            if it.get("url", "").startswith("http"):
-                out.append(f'<a class="rc" href="{E(it["url"])}" target="_blank">↗ {E(it["source"])} #{i}</a>')
-            else:
-                out.append(f'<span class="rc">#{i}</span>')
-    return f'<div class="rcs">{"".join(out)}</div>' if out else ""
-
-
-def conf_of(n, hi=60, mid=20):
-    return "High" if n >= hi else "Medium" if n >= mid else "Low"
-
-
-def sec(num, title, body):
-    return (f'<div class="sec"><div class="sec-h"><span class="num">{num}</span><h2>{E(title)}</h2></div>'
-            f'{body}</div>')
-
-
-def tag(text, cls=""):
-    return f'<span class="tag {cls}">{E(text)}</span>'
-
-
-def bar(s):
-    p, n, g = int(s["positive"]), int(s["neutral"]), int(s["negative"])
-    return (f'<div class="bar"><span style="width:{p}%;background:var(--olive)"></span>'
-            f'<span style="width:{n}%;background:var(--sand)"></span>'
-            f'<span style="width:{g}%;background:var(--accent)"></span></div>'
-            f'<div class="barkey">{p}% positive · {n}% neutral · {g}% negative</div>')
-
-
-def point_html(title, detail, ids, items, extra="", badge=""):
-    return (f'<div class="pt"><div class="pt-t">{E(title)}{badge}</div><div class="pt-d">{E(detail)}</div>'
-            f'{extra}{rcpts(ids, items)}</div>')
-
-
-def angle_html(a, items, brand=""):
-    ids = a.get("evidence_ids", [])
-    ver = tag("✓ verbatim", "ok") if verbatim(a["customer_words"], ids, items) else tag("paraphrase")
-    return (f'<div class="angle"><div><div class="hook">{E(a["hook"])}</div>'
-            f'<div class="pt-d">{E(a["why"])}</div><div style="margin-top:.5rem">'
-            f'<span class="tag" style="margin-left:0">{E(a["channel"])}</span>{brand}</div></div>'
-            f'<div class="note">“{E(a["customer_words"])}”<div class="notek">{ver}</div>{rcpts(ids, items)}</div></div>')
-
-
-def drawer(items, with_brand=False):
-    if not items:
-        return
-    with st.expander(f"📎 The {len(items)} items behind this brief"):
-        rows = []
-        for i, it in enumerate(items, 1):
-            b = tag("Brand " + it["brand"]) if with_brand and it.get("brand") else ""
-            rows.append(f'<div class="pt"><span class="rc">#{i}</span>{b}{tag(it["source"])}'
-                        f'{tag(it.get("date") or "n/a")}<div class="pt-d">{E(it["text"][:300])}</div></div>')
-        st.markdown("".join(rows), unsafe_allow_html=True)
-
-
-def render_single(res):
-    d, items = res["data"], res["items"]
-    n = len(items)
-    meta = (f'{E(res["subject"])} · {E(res["industry"])} · {E(res["window"] or "your data")} · '
-            f'{n} items · confidence {conf_of(n)}')
-    angles = [a for a in d["angles"] if has_evidence(a["evidence_ids"], n)]
-    h = [f'<div class="brief"><div class="meta">{meta}</div>',
-         f'<h2 class="hl">{E(d["headline"])}</h2><div class="lede">{E(d["summary"])}</div>{bar(d["sentiment"])}']
-    if n < 20:
-        h.append('<div class="warn" style="margin-top:1rem">Small sample. Treat this as directional.</div>')
-    h.append(sec("01", "What customers value",
-                 "".join(point_html(p["title"], p["detail"], p["evidence_ids"], items) for p in d["loved"])))
-    h.append(sec("02", "What's going wrong", "".join(
-        point_html(p["title"], p["detail"], p["evidence_ids"], items,
-                   extra=f'<div class="pt-d"><b>Root cause:</b> {E(p["cause"])}</div>',
-                   badge=tag(p["severity"], p["severity"].lower())) for p in d["pain_points"])))
-    h.append(sec("03", "Say this", "".join(angle_html(a, items) for a in angles)
-                 or '<div class="pt-d">No angle met the evidence bar. Add more data.</div>'))
-    h.append(sec("04", "Avoid saying", "".join(
-        point_html(a["claim"], a["reason"], a["evidence_ids"], items) for a in d["avoid"])))
-    h.append(sec("05", "Who's talking", "".join(
-        f'<div class="pt"><div class="pt-t">{E(p["name"])}{tag(str(p["percentage"]) + "%")}</div>'
-        f'<div class="pt-d">{E(p["description"])}</div></div>' for p in d["personas"])))
-    h.append(sec("06", "Next moves", "".join(
-        point_html(r["title"], r["action"], [], items, badge=tag(r["priority"], r["priority"].lower()))
-        for r in d["recommendations"])))
-    h.append("</div>")
-    st.markdown("".join(h), unsafe_allow_html=True)
-
-
-def render_compare(res):
-    d, items = res["data"], res["items"]
-    na, nb = res["names"]
-    ca, cb = res["counts"]
-    n = len(items)
-    lab = {"A": na, "B": nb, "Even": "Even", "Either": "Either"}
-    meta = f'{E(na)} vs {E(nb)} · {E(res["industry"])} · {E(res["window"] or "your data")} · {n} items'
-
-    def score(name, side, c):
-        return (f'<div><div class="bn">{E(name)}</div>{bar(side["sentiment"])}'
-                f'<div class="barkey">{c} items · confidence {conf_of(c, 40, 15)}</div></div>')
-
-    def sw(name, side):
-        s = "".join(point_html(p["title"], p["detail"], p["evidence_ids"], items) for p in side["strengths"])
-        w = "".join(point_html(p["title"], p["detail"], p["evidence_ids"], items) for p in side["weaknesses"])
-        return (f'<div><div class="bn">{E(name)}</div><div class="barkey">STRENGTHS</div>{s}'
-                f'<div class="barkey" style="margin-top:1rem">WEAKNESSES</div>{w}</div>')
-
-    h = [f'<div class="brief"><div class="meta">{meta}</div>',
-         f'<h2 class="hl">{E(d["headline"])}</h2><div class="lede">{E(d["summary"])}</div>',
-         f'<div class="cols2">{score(na, d["a"], ca)}{score(nb, d["b"], cb)}</div>']
-    if min(ca, cb) < 15:
-        h.append(f'<div class="warn" style="margin-top:1rem">Thin data ({E(na)}: {ca}, {E(nb)}: {cb}). '
-                 'Treat the gaps below as hypotheses.</div>')
-    h.append(sec("01", "Head to head", "".join(
-        f'<div class="dim"><div class="pt-t">{E(x["dimension"])}</div><div class="edge">{E(lab.get(x["edge"], x["edge"]))}</div>'
-        f'<div><div class="pt-d">{E(x["verdict"])}</div>{rcpts(x["evidence_ids"], items)}</div></div>'
-        for x in d["dimensions"])))
-    gaps = [g for g in d["gaps"] if has_evidence(g["evidence_ids"], n)]
-    h.append(sec("02", "White space", "".join(
-        f'<div class="gap"><div>{tag(g["kind"])}{tag("for " + lab.get(g["for_brand"], g["for_brand"]))}'
-        f'{tag(g["confidence"] + " confidence", g["confidence"].lower())}</div>'
-        f'<div class="hook" style="margin-top:.5rem">{E(g["gap"])}</div>'
-        f'<div class="pt-d">{E(g["rationale"])}</div>'
-        f'<div class="pt-d" style="margin-top:.4rem"><b>Move:</b> {E(g["move"])}</div>{rcpts(g["evidence_ids"], items)}</div>'
-        for g in gaps) or '<div class="pt-d">No gap met the evidence bar. Try a longer window or more sources.</div>'))
-    h.append(sec("03", "Strengths and weaknesses", f'<div class="cols2">{sw(na, d["a"])}{sw(nb, d["b"])}</div>'))
-    angles = [a for a in d["angles"] if has_evidence(a["evidence_ids"], n)]
-    h.append(sec("04", "Say this", "".join(
-        angle_html(a, items, tag(lab[a["brand"]])) for a in angles)
-        or '<div class="pt-d">No angle met the evidence bar.</div>'))
-    h.append("</div>")
-    st.markdown("".join(h), unsafe_allow_html=True)
-
-
 def runs_for_sid(sid):
     """Runs this visitor id used in the last 24h (survives page refresh if the URL keeps ?sid=)."""
     if SB_URL and SB_KEY:
@@ -658,41 +389,6 @@ if "sid" not in st.session_state:
     st.session_state.sid = sid
     st.session_state.runs = runs_for_sid(sid)
 
-# ── Masthead + shared settings ─────────────────────────────────────────────────
-st.markdown(f"""<div class="mast">{APP_NAME} · customer voice → strategy brief</div>
-<h1 class="hero">Turn what customers say into what to do next.</h1>
-<p class="sub">Bring your own CRM reviews or survey answers, or pull public reviews for any brand. Get a sourced brief: messaging angles in customers' own words, claims to avoid, and where competitors leave the door open.</p>""",
-            unsafe_allow_html=True)
-quota_box = st.empty()
-
-own_key = ""
-with st.expander("🔑 Use your own free Gemini key (no usage limits)"):
-    own_key = st.text_input("Gemini API key", type="password", help="Get one free at aistudio.google.com. Never stored.")
-active_key = own_key.strip() or GOOGLE_KEY
-capped = not own_key.strip()
-
-s1, s2, s3 = st.columns(3)
-industry = s1.selectbox("Industry", ["Electric Vehicles", "Consumer Tech", "E-Commerce", "SaaS / Software",
-                                     "Retail / Fashion", "Food & Beverage", "Other"])
-depth = s2.select_slider("Depth", ["Quick Scan", "Standard", "Deep Dive"], value="Standard")
-window = s3.selectbox("Review window", ["Last 3 months", "Last 6 months", "Last 12 months", "All time"], index=1)
-months = {"Last 3 months": 3, "Last 6 months": 6, "Last 12 months": 12, "All time": None}[window]
-srcs = st.multiselect("Sources", ["YouTube", "App Store", "Hacker News"],
-                      default=["YouTube", "App Store", "Hacker News"])
-
-
-def caps_ok(cost=1):
-    if not capped:
-        return True
-    if st.session_state.runs + cost > SESSION_LIMIT:
-        st.warning(f"You've used all {SESSION_LIMIT} free runs. Add your own free Gemini key above to keep going.")
-        return False
-    if runs_today() >= DAILY_LIMIT:
-        st.warning("Today's free capacity is used up. Come back tomorrow, or add your own Gemini key above.")
-        return False
-    return True
-
-
 def source_counts(items):
     c = {}
     for it in items:
@@ -704,7 +400,7 @@ def find(prefix, name, hint):
     if capped:
         st.session_state.finds = st.session_state.get("finds", 0) + 1
         if st.session_state.finds > 25:
-            raise RuntimeError("Lookup limit reached for this session. Add your own Gemini key above to keep going.")
+            raise RuntimeError("Lookup limit reached for this session. Add your own Gemini key in Usage & API key to keep going.")
     st.session_state[f"{prefix}_cands"] = find_companies(name.strip(), hint.strip(), active_key)
     st.session_state[f"{prefix}_q"] = name.strip()
 
@@ -754,209 +450,239 @@ def csv_items(df, text_col, date_col, months):
     return out
 
 
-# ── Input tabs ─────────────────────────────────────────────────────────────────
-t3, t1, t2 = st.tabs(["🏢 Analyze your own feedback", "📝 Brief on any brand", "⚔️ Compare two brands"])
 
-with t1:
-    c1, c2 = st.columns(2)
-    name = c1.text_input("Brand", key="s_name", placeholder="e.g. Lucid Motors")
-    hint = c2.text_input("Help me find the right one (optional)", key="s_hint", placeholder="Website or country, e.g. lucidmotors.com", help="Several companies can share a name. Add a website or country and we will show the right match.")
-    if st.button("1 · Find brand", key="s_find", use_container_width=True):
-        if not name.strip():
-            st.warning("Type a brand name first.")
-        elif caps_ok(1):
-            try:
-                with st.spinner("Looking for matches..."):
-                    find("s", name, hint)
-            except Exception as e:
-                show_error(e)
-    sel = pick("s", "2 · Which one did you mean?")
-    if sel and st.button("3 · Write the brief", key="s_go", use_container_width=True):
-        subject, desc = sel
-        if not srcs:
-            st.warning("Pick at least one source.")
-        elif caps_ok(1):
-            try:
-                t0 = time.time()
-                with st.spinner("Pulling reviews..."):
-                    items, status = gather(subject, srcs, YT_KEY, months)
-                st.caption(" · ".join(f"{k}: {v}" for k, v in status.items()))
-                if len(items) < 5:
-                    st.warning("Found fewer than 5 reviews in that window. Try a longer window, another source, "
-                               "a more specific name, or the data tab.")
-                else:
-                    with st.spinner("Writing the brief..."):
-                        data, model = run_analysis(
-                            build_brief_prompt(industry, subject, desc, numbered(items), depth), active_key, "brief")
-                    st.session_state.result = {"kind": "single", "data": data, "model": model, "industry": industry,
-                                               "subject": subject, "items": items, "window": window,
-                                               "source_counts": source_counts(items)}
-                    st.session_state.runs += 1
-                    log_run(subject, len(items), ",".join(source_counts(items)), time.time() - t0, "brief")
-            except Exception as e:
-                show_error(e)
+# ── Interface ─────────────────────────────────────────────────────────────────
+brand, capacity, account = st.columns([2.8, 1.6, 1.2], vertical_alignment="center")
+brand.markdown('<div class="wordmark">VoiceBrief<span>.</span></div>', unsafe_allow_html=True)
+quota_box = capacity.empty()
+with account.popover("Usage & API key", use_container_width=True):
+    st.write(f"The shared service includes {SESSION_LIMIT} analyses per visitor, subject to daily capacity.")
+    own_key = st.text_input("Gemini API key", type="password", key="own_api_key", help="Optional. Your key is used in this session and is not included in reports or usage logs.")
+    st.caption("Your own key bypasses this app's shared-run cap. Google's quotas, availability and any billing still apply.")
+    st.link_button("Get a Gemini API key", "https://aistudio.google.com/apikey")
+active_key = own_key.strip() or GOOGLE_KEY
+capped = not own_key.strip()
 
-with t2:
-    ca, cb = st.columns(2)
-    na_ = ca.text_input("Brand A", key="a_name", placeholder="e.g. Lucid Motors")
-    ha_ = ca.text_input("Help me find the right one (optional)", key="a_hint", placeholder="Website or country", help="Several companies can share a name. Add a website or country and we will show the right match.")
-    nb_ = cb.text_input("Brand B", key="b_name", placeholder="e.g. Rivian")
-    hb_ = cb.text_input("Help me find the right one (optional)", key="b_hint", placeholder="Website or country", help="Several companies can share a name. Add a website or country and we will show the right match.")
-    if st.button("1 · Find both brands", key="c_find", use_container_width=True):
-        if not (na_.strip() and nb_.strip()):
-            st.warning("Type both brand names first.")
-        elif caps_ok(1):
-            try:
-                with st.spinner("Looking for matches..."):
-                    find("a", na_, ha_)
-                    find("b", nb_, hb_)
-            except Exception as e:
-                show_error(e)
-    pa, pb = st.columns(2)
-    with pa:
-        A = pick("a", "2 · Brand A: which one?")
-    with pb:
-        B = pick("b", "2 · Brand B: which one?")
-    if A and B and st.button("3 · Write the comparison", key="c_go", use_container_width=True):
-        if not srcs:
-            st.warning("Pick at least one source.")
-        elif caps_ok(1):
-            try:
-                t0 = time.time()
-                with st.spinner("Pulling reviews for both brands..."):
-                    ia, sa = gather(A[0], srcs, YT_KEY, months, max_items=80)
-                    ib, sb_ = gather(B[0], srcs, YT_KEY, months, max_items=80)
-                st.caption(f"{A[0]}: " + " · ".join(f"{k} {v}" for k, v in sa.items())
-                           + f"   |   {B[0]}: " + " · ".join(f"{k} {v}" for k, v in sb_.items()))
-                if len(ia) < 5 or len(ib) < 5:
-                    st.warning(f"Not enough reviews for both brands ({A[0]}: {len(ia)}, {B[0]}: {len(ib)}). "
-                               "Try a longer window or more sources.")
-                else:
-                    for it in ia:
-                        it["brand"] = "A"
-                    for it in ib:
-                        it["brand"] = "B"
-                    items = ia + ib
-                    prompt = build_compare_prompt(industry, A, B, numbered(items, {"A": A[0], "B": B[0]}),
-                                                  depth, len(ia), len(ib))
-                    with st.spinner("Writing the comparison..."):
-                        data, model = run_analysis(prompt, active_key, "compare")
-                    st.session_state.result = {"kind": "compare", "data": data, "model": model, "industry": industry,
-                                               "names": (A[0], B[0]), "counts": (len(ia), len(ib)), "items": items,
-                                               "window": window}
-                    st.session_state.runs += 1
-                    log_run(f"{A[0]} vs {B[0]}", len(items), ",".join(source_counts(items)), time.time() - t0, "compare")
-            except Exception as e:
-                show_error(e)
+st.markdown('<h1 class="hero">From customer feedback<br>to a useful brief.</h1><p class="hero-summary">Find what customers value, the friction they describe, and messaging worth testing. Inspect the feedback behind each finding.</p>', unsafe_allow_html=True)
 
-with t3:
-    st.markdown('<div class="callout"><b>Built for your own data.</b> Paste or upload CRM reviews, survey answers or '
-                'support tickets. Tell us what you sell so the brief reads the feedback in context. '
-                'Emails and common phone formats are masked before analysis.</div>', unsafe_allow_html=True)
-    o1, o2 = st.columns(2)
-    own_name = o1.text_input("Your company or product", key="o_name", placeholder="e.g. Acme Smart Thermostat")
-    own_url = o2.text_input("Company page link (optional)", key="o_url", placeholder="https://acme.com",
-                            help="We read the page title and description so the brief knows what you sell.")
-    own_desc = st.text_area("What do you sell, and to whom?", key="o_desc", height=90,
-                            placeholder="e.g. A smart thermostat for renters. Buyers are mostly 25-40, in apartments, price-sensitive.")
-    st.caption("Add the description, the link, or both. At least one is needed.")
-    src_mode = st.radio("Your feedback", ["Paste text", "Upload CSV"], horizontal=True, key="o_mode")
-    raw, df, text_col, date_col = "", None, None, None
-    if src_mode == "Paste text":
-        raw = st.text_area("Paste reviews, comments or survey answers (one per line)", height=200, key="p_raw")
+def task_changed():
+    st.session_state.editing_inputs = True
+
+TASKS = ["Your feedback", "Brand brief", "Compare brands"]
+task = st.segmented_control("Choose your task", TASKS, default=TASKS[0], selection_mode="single", key="task_mode", on_change=task_changed) or TASKS[0]
+
+
+def show_error(error):
+    if isinstance(error, Busy):
+        st.info("The AI provider is busy. This run was not counted. Try again shortly or use a different Gemini key in Usage & API key.")
     else:
-        up = st.file_uploader("CRM or survey export (.csv, max 5 MB)", type=["csv"], key="o_csv")
-        if up is not None:
-            if up.size > 5_000_000:
+        st.error("The analysis could not be completed. Check the API key and try again. Your previous brief is preserved and no new run was counted.")
+
+
+def caps_ok(cost=1):
+    if not active_key:
+        st.warning("Add a Gemini API key in Usage & API key to run an analysis. This preview has no shared key configured.")
+        return False
+    if not capped:
+        return True
+    if st.session_state.runs + cost > SESSION_LIMIT:
+        st.warning(f"You've used all {SESSION_LIMIT} shared runs. Use your own Gemini key in Usage & API key to continue.")
+        return False
+    if runs_today() >= DAILY_LIMIT:
+        st.warning("Today's shared capacity is used up. Come back tomorrow, or use your own Gemini key.")
+        return False
+    return True
+
+
+def finish(result, started, mode):
+    result.update(created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"), origin=mode)
+    st.session_state.result = result
+    st.session_state.runs += 1
+    st.session_state.editing_inputs = False
+    st.session_state.pop("pdf_export", None)
+    log_run(result.get("subject") or " vs ".join(result.get("names", [])), len(result["items"]), ",".join(source_counts(result["items"])), time.time() - started, mode)
+    st.rerun()
+
+
+def settings():
+    industry = "Other"
+    with st.expander("Analysis settings", expanded=False):
+        industry = st.selectbox("Industry", ["Other", "Electric Vehicles", "Consumer Tech", "E-Commerce", "SaaS / Software", "Retail / Fashion", "Food & Beverage"], key="industry")
+        depth = st.select_slider("Brief depth", ["Quick Scan", "Standard", "Deep Dive"], value="Standard", key="depth")
+        dated = task != "Your feedback" or st.session_state.get("o_mode") == "Upload CSV"
+        window = st.selectbox("Review window", ["Last 3 months", "Last 6 months", "Last 12 months", "All time"], index=1, key="review_window") if dated else "All time"
+        if task != "Your feedback":
+            srcs = st.multiselect("Public sources", ["YouTube", "App Store", "Hacker News"], default=["YouTube", "App Store", "Hacker News"], key="public_sources")
+            st.caption("Availability differs by source. YouTube collection requires a configured YouTube API key.")
+        else:
+            srcs = []
+            st.caption("Only your submitted feedback is analyzed. A date window applies only when a CSV date column is selected.")
+    months = {"Last 3 months": 3, "Last 6 months": 6, "Last 12 months": 12, "All time": None}[window]
+    return industry, depth, window, months, srcs
+
+
+def own_feedback(industry, depth, window, months):
+    st.markdown('<p class="setup-intro">Bring customer reviews, survey responses or support feedback. Add enough company context to make the findings useful.</p>', unsafe_allow_html=True)
+    name = st.text_input("Company or product", key="o_name", placeholder="e.g. Acme Smart Thermostat")
+    description = st.text_area("What do you sell, and to whom?", key="o_desc", height=90, placeholder="A smart thermostat for renters who want simpler temperature control.")
+    url = st.text_input("Company page link (optional)", key="o_url", placeholder="https://acme.com", help="We use the page title and description as company context. Add a description if the page cannot be read.")
+    mode = st.radio("Feedback input", ["Paste text", "Upload CSV"], horizontal=True, key="o_mode")
+    raw, df, text_col, date_col = "", None, None, None
+    if mode == "Paste text":
+        raw = st.text_area("Feedback, one response per line", height=170, key="p_raw")
+        if raw.strip():
+            st.caption(f"{len(paste_items(raw))} feedback items ready, up to {MAX_ITEMS} per brief.")
+    else:
+        upload = st.file_uploader("CRM or survey export (.csv, up to 5 MB)", type=["csv"], key="o_csv")
+        if upload is not None:
+            if upload.size > 5_000_000:
                 st.warning("That file is over 5 MB. Export a smaller date range.")
             else:
                 try:
-                    df = pd.read_csv(up, encoding_errors="replace")
+                    df = pd.read_csv(upload, encoding_errors="replace")
                     df.columns = [str(c) for c in df.columns]
-                except Exception as e:
-                    st.error(f"Couldn't read that CSV: {e}")
-                    df = None
+                except Exception:
+                    st.error("This CSV could not be read. Check the file format and try again.")
         if df is not None and len(df.columns):
-            cols = list(df.columns)
-            guess = max(cols, key=lambda c: df[c].astype(str).str.len().mean())
-            dguess = next((c for c in cols if any(k in c.lower() for k in ("date", "time", "created"))), "(none)")
-            x1, x2 = st.columns(2)
-            text_col = x1.selectbox("Which column has the feedback text?", cols, index=cols.index(guess), key="o_tcol")
-            dopts = ["(none)"] + cols
-            date_col = x2.selectbox("Date column (optional, enables the review window)", dopts,
-                                    index=dopts.index(dguess), key="o_dcol")
-            st.caption(f"{len(df):,} rows found.")
-    st.caption("Heads-up: on the free Gemini tier, Google may use inputs to improve its products. "
-               "Remove names and sensitive data first.")
-    if st.button("Write the brief", key="p_go", use_container_width=True):
-        if not own_name.strip():
-            st.warning("Add your company or product name.")
-        elif not (own_desc.strip() or own_url.strip()):
-            st.warning("Tell us what you sell: add a short description or a link to your company page.")
-        elif caps_ok(1):
+            columns = list(df.columns)
+            guess = max(columns, key=lambda c: df[c].astype(str).str.len().mean())
+            text_col = st.selectbox("Feedback text column", columns, index=columns.index(guess), key="o_tcol")
+            options = ["(none)"] + columns
+            guessed_date = next((c for c in columns if any(k in c.lower() for k in ("date", "time", "created"))), "(none)")
+            date_col = st.selectbox("Date column (optional)", options, index=options.index(guessed_date), key="o_dcol")
+            ready = csv_items(df, text_col, date_col, months)
+            st.caption(f"{len(df):,} rows loaded / {len(ready):,} usable items after filtering / up to {MAX_ITEMS} analyzed.")
+            st.dataframe(df[[text_col]].head(3), hide_index=True, use_container_width=True)
+    st.caption("Remove sensitive information first. Common email and phone formats are masked; other identifying details can remain. Google's free API tier may use submitted content to improve its products.")
+    if st.button("Write the brief", key="p_go", type="primary", use_container_width=True):
+        if not name.strip(): st.warning("Add your company or product name.")
+        elif not (description.strip() or url.strip()): st.warning("Add a company description, a page link, or both.")
+        elif mode == "Paste text" and not raw.strip(): st.warning("Paste some feedback first.")
+        elif mode == "Upload CSV" and df is None: st.warning("Upload a readable CSV first.")
+        elif caps_ok():
             try:
-                t0 = time.time()
-                items, err = [], ""
-                if src_mode == "Paste text":
-                    if raw.strip():
-                        items = paste_items(raw)
-                    else:
-                        err = "Paste some feedback first."
-                elif df is None:
-                    err = "Upload a CSV first."
-                else:
-                    items = csv_items(df, text_col, date_col, months)
-                    if len(items) < 3:
-                        err = "Fewer than 3 usable rows. Check the text column, or set Review window to All time."
-                if err:
-                    st.warning(err)
-                else:
-                    ctx = fetch_page_context(own_url.strip()) if own_url.strip() else ""
-                    if own_url.strip() and not ctx:
-                        st.caption("Couldn't read that page, so I'm using your description only.")
-                    desc = " ".join(x for x in (own_desc.strip(), ctx) if x)[:1800]
-                    with st.spinner("Writing the brief..."):
-                        data, model = run_analysis(
-                            build_brief_prompt(industry, own_name.strip(), desc, numbered(items), depth, own=True),
-                            active_key, "brief")
-                    dated = src_mode == "Upload CSV" and date_col not in (None, "(none)")
-                    st.session_state.result = {"kind": "single", "data": data, "model": model, "industry": industry,
-                                               "subject": own_name.strip(), "items": items,
-                                               "window": window if dated else "", "source_counts": source_counts(items)}
-                    st.session_state.runs += 1
-                    log_run("Own data", len(items), ",".join(source_counts(items)), time.time() - t0, "own")
-            except Exception as e:
-                show_error(e)
+                started = time.time()
+                items = paste_items(raw) if mode == "Paste text" else csv_items(df, text_col, date_col, months)
+                if len(items) < 3:
+                    st.warning("Add at least 3 usable feedback items. Check the text column or choose a wider date window in Analysis settings.")
+                    return
+                with st.status("Preparing your brief", expanded=True) as progress:
+                    st.write(f"Reading {len(items)} feedback items")
+                    context = fetch_page_context(url.strip()) if url.strip() else ""
+                    if url.strip() and not context and not description.strip():
+                        progress.update(label="Company context needed", state="error")
+                        st.warning("The company page could not be read. Add a short description and try again. No run was counted.")
+                        return
+                    desc = " ".join(x for x in (description.strip(), context) if x)[:1800]
+                    st.write("Interpreting the feedback and writing a sourced brief")
+                    data, model = run_analysis(build_brief_prompt(industry, name.strip(), desc, numbered(items), depth, own=True), active_key, "brief")
+                    progress.update(label="Brief ready", state="complete", expanded=False)
+                dated = mode == "Upload CSV" and date_col not in (None, "(none)")
+                finish({"kind": "single", "data": data, "model": model, "industry": industry, "depth": depth, "subject": name.strip(), "items": items, "window": window if dated else "", "source_counts": source_counts(items)}, started, "own")
+            except Exception as error:
+                show_error(error)
 
-# ── The brief ──────────────────────────────────────────────────────────────────
-res = st.session_state.get("result")
-if res:
-    if res["kind"] == "compare":
-        render_compare(res)
-    else:
-        render_single(res)
-    st.caption(f"Sample of public comments and reviews, not a census. Written by {res['model']}.")
-    drawer(res["items"], with_brand=res["kind"] == "compare")
-    st.download_button("⬇️  Download brief data (JSON)", data=json.dumps(res["data"], indent=2, ensure_ascii=False),
-                       file_name="voicebrief.json", mime="application/json", use_container_width=True)
 
-if st.session_state.get("sb_err"):
-    st.caption(f"⚠️ Usage logging failed → {st.session_state.sb_err}")
+def brand_brief(industry, depth, window, months, srcs):
+    st.markdown('<p class="setup-intro">Choose the right company, then collect a sample of public feedback for its brief.</p>', unsafe_allow_html=True)
+    name = st.text_input("Brand", key="s_name", placeholder="e.g. Lucid Motors")
+    hint = st.text_input("Website or country (optional)", key="s_hint", placeholder="lucidmotors.com")
+    if st.button("Find brand", key="s_find", use_container_width=True):
+        if not name.strip(): st.warning("Type a brand name first.")
+        elif caps_ok():
+            try:
+                with st.spinner("Finding matching brands..."): find("s", name, hint)
+            except Exception as error: show_error(error)
+    # A changed query must not silently analyze an older selected candidate.
+    selected = pick("s", "Choose the matching brand") if st.session_state.get("s_q") == name.strip() else None
+    if selected and st.button("Write the brief", key="s_go", type="primary", use_container_width=True):
+        if not srcs: st.warning("Choose at least one public source in Analysis settings.")
+        elif caps_ok():
+            try:
+                started = time.time(); subject, desc = selected
+                with st.status("Preparing your brief", expanded=True) as progress:
+                    st.write("Collecting public feedback")
+                    items, source_status = gather(subject, srcs, YT_KEY, months)
+                    st.write("Source collection: " + " / ".join(f"{k}: {v}" for k, v in source_status.items()))
+                    if len(items) < 5:
+                        progress.update(label="More feedback needed", state="error")
+                        st.warning("Fewer than 5 usable items were found. Widen the date window, change sources or bring your own feedback. No run was counted.")
+                        return
+                    st.write(f"Interpreting {len(items)} feedback items and writing the brief")
+                    data, model = run_analysis(build_brief_prompt(industry, subject, desc, numbered(items), depth), active_key, "brief")
+                    progress.update(label="Brief ready", state="complete", expanded=False)
+                finish({"kind": "single", "data": data, "model": model, "industry": industry, "depth": depth, "subject": subject, "items": items, "window": window, "source_counts": source_counts(items)}, started, "public")
+            except Exception as error: show_error(error)
 
-stats = sb_stats()
-if stats:
-    with st.expander("📈 Live usage stats"):
-        a, b, c, d = st.columns(4)
-        a.metric("Analyses run", f"{stats['runs']:,}")
-        b.metric("Unique visitors", f"{stats['visitors']:,}")
-        c.metric("Reviews analyzed", f"{stats['reviews']:,}")
-        d.metric("Avg time (sec)", stats["avg_secs"])
+
+def compare_brands(industry, depth, window, months, srcs):
+    st.markdown('<p class="setup-intro">Compare what customers value, the friction each brand faces, and positioning opportunities in the available feedback.</p>', unsafe_allow_html=True)
+    a, b = st.columns(2)
+    na = a.text_input("Brand A", key="a_name", placeholder="e.g. Lucid Motors")
+    nb = b.text_input("Brand B", key="b_name", placeholder="e.g. Rivian")
+    ha = a.text_input("Brand A website or country (optional)", key="a_hint")
+    hb = b.text_input("Brand B website or country (optional)", key="b_hint")
+    if st.button("Find both brands", key="c_find", use_container_width=True):
+        if not (na.strip() and nb.strip()): st.warning("Type both brand names first.")
+        elif caps_ok():
+            try:
+                with st.spinner("Finding matching brands..."): find("a", na, ha); find("b", nb, hb)
+            except Exception as error: show_error(error)
+    a, b = st.columns(2)
+    with a: A = pick("a", "Choose Brand A") if st.session_state.get("a_q") == na.strip() else None
+    with b: B = pick("b", "Choose Brand B") if st.session_state.get("b_q") == nb.strip() else None
+    if A and B and st.button("Write the comparison", key="c_go", type="primary", use_container_width=True):
+        if not srcs: st.warning("Choose at least one public source in Analysis settings.")
+        elif A[0].casefold() == B[0].casefold(): st.warning("Choose two different brands to compare.")
+        elif caps_ok():
+            try:
+                started = time.time()
+                with st.status("Preparing your comparison", expanded=True) as progress:
+                    st.write("Collecting feedback for " + A[0]); ia, sa = gather(A[0], srcs, YT_KEY, months, max_items=80)
+                    st.write("Collecting feedback for " + B[0]); ib, sb = gather(B[0], srcs, YT_KEY, months, max_items=80)
+                    if min(len(ia), len(ib)) < 5:
+                        progress.update(label="More feedback needed", state="error")
+                        st.warning(f"Both brands need at least 5 usable items ({A[0]}: {len(ia)}, {B[0]}: {len(ib)}). Widen the window or change sources. No run was counted.")
+                        return
+                    for item in ia: item["brand"] = "A"
+                    for item in ib: item["brand"] = "B"
+                    items = ia + ib
+                    st.write("Comparing the evidence and writing the analysis")
+                    data, model = run_analysis(build_compare_prompt(industry, A, B, numbered(items, {"A": A[0], "B": B[0]}), depth, len(ia), len(ib)), active_key, "compare")
+                    progress.update(label="Comparison ready", state="complete", expanded=False)
+                finish({"kind": "compare", "data": data, "model": model, "industry": industry, "depth": depth, "names": (A[0], B[0]), "counts": (len(ia), len(ib)), "items": items, "window": window, "source_counts": source_counts(items)}, started, "comparison")
+            except Exception as error: show_error(error)
+
+
+def input_workspace():
+    industry, depth, window, months, srcs = settings()
+    if task == "Your feedback": own_feedback(industry, depth, window, months)
+    elif task == "Brand brief": brand_brief(industry, depth, window, months, srcs)
+    else: compare_brands(industry, depth, window, months, srcs)
+
+
+result = st.session_state.get("result")
+if result:
+    with st.expander("Edit inputs or create another brief", expanded=st.session_state.get("editing_inputs", False)):
+        input_workspace()
+    render_report(result)
+else:
+    setup, preview = st.columns([1.15, 1], gap="large")
+    with setup:
+        input_workspace()
+    with preview:
+        st.markdown("""<aside class="empty-brief"><h2>A brief you<br>can inspect.</h2><p>Your completed analysis will appear here. Open a finding to read its source feedback, then export the report.</p><ul class="brief-outline"><li><strong>Customer priorities</strong><span>What people value and where they experience friction.</span></li><li><strong>Practical next steps</strong><span>Messaging to test, claims to avoid and proposed actions.</span></li><li><strong>Supporting feedback</strong><span>The source material behind each supported finding.</span></li></ul></aside>""", unsafe_allow_html=True)
+
+reference = Path(__file__).parent / "reference_case" / "report.pdf"
+if reference.is_file():
+    with st.expander("Read a reference case"):
+        st.caption("A completed analysis selected as a reference. This is a saved report, not a new analysis.")
+        st.download_button("Download the reference PDF", data=reference.read_bytes(), file_name="voicebrief-reference-case.pdf", mime="application/pdf", on_click="ignore")
 
 left = max(SESSION_LIMIT - st.session_state.runs, 0)
-if capped:
-    quota_box.markdown(
-        f'<div class="quota"><span class="dots">{"●" * left}{"○" * (SESSION_LIMIT - left)}</span>'
-        f'<b>{left} of {SESSION_LIMIT}</b> free runs left <span class="qdim">· every brief or comparison = 1 run · '
-        f'add your own free Gemini key for unlimited</span></div>', unsafe_allow_html=True)
-else:
-    quota_box.markdown('<div class="quota"><b>∞</b> Unlimited runs with your own Gemini key</div>', unsafe_allow_html=True)
+quota_box.markdown(f'<p class="quota-inline">{left} of {SESSION_LIMIT} shared runs available</p>' if capped else '<p class="quota-inline">Using your Gemini key</p>', unsafe_allow_html=True)
+with st.expander("About this service"):
+    st.caption("VoiceBrief uses Gemini to interpret a sample of feedback. Review sources and limitations before using or sharing a brief. Exporting a completed analysis does not use another run.")
+    stats = sb_stats()
+    if stats:
+        st.caption(f"Shared service: {stats['runs']:,} analyses / {stats['reviews']:,} feedback items processed.")

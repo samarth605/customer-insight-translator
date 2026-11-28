@@ -4,7 +4,14 @@ primaryColor = "#B4472A"
 backgroundColor = "#F6F1E7"
 secondaryBackgroundColor = "#EDE6D6"
 textColor = "#1B1B1B"
-font = "serif"
+font = "sans-serif"
+headingFont = "serif"
+borderColor = "#D9D0BC"
+baseRadius = "small"
 
 [server]
 maxUploadSize = 5
+
+[client]
+toolbarMode = "minimal"
+
