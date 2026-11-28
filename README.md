@@ -45,6 +45,10 @@ Brand matching uses a fast lookup model first, with a 10-second per-request time
 
 ## Reports and PDF export
 
+New public-source runs apply conservative text rules to remove recognizable promotional messages and creator-only praise before selecting the sample. The report records collected, excluded and selected counts. Sources load independently in parallel; individual HTTP requests time out. These rules do not establish relevance or verified customer status, and other irrelevant comments can remain.
+
+Before a result is saved, inconsistent sentiment/audience totals are rejected without counting a run. Findings without valid source references and messaging suggestions with unmatched quotes or selected unsupported superlative/guarantee/driving-capability wording are withheld. A business-outcome headline matched by the conservative check is replaced with a neutral description. Review notes are included on screen and in PDF, text and JSON exports. These are deterministic checks, not independent fact verification. Existing saved reports, including the supplied Tesla example, remain unchanged.
+
 Every completed brief or comparison offers **Download PDF report**, text and JSON downloads, plus copyable report text. Exporting uses the already-completed analysis and does not call Gemini or use another run. PDF bytes are reused within that session for the same report and invalidated when a new report completes.
 
 The PDF contains the result, sentiment estimates, every analysis section, sample/source information, model and timestamp, limitations and the complete source text made available to the analysis. Numbered references link to the source appendix; original public URLs are clickable. Own-feedback reports are labeled as such. Quotes marked as matching use an exact, whitespace-normalized source check; unmatched wording is labeled as a suggestion.

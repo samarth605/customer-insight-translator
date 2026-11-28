@@ -1,12 +1,14 @@
 """Free review fetchers. Each returns a list of {source, text, url} dicts."""
 import html
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from itertools import zip_longest
 
 import requests
+from quality import filter_feedback
 
-TIMEOUT = 12
+TIMEOUT = 8
 UA = {"User-Agent": "ConsumerInsightTranslator/1.0 (student project)"}
 ALL_SOURCES = ["YouTube", "App Store", "Hacker News"]
 
@@ -102,7 +104,7 @@ def fetch_hn(company, cutoff=None, limit=40):
     return items
 
 
-def gather(company, sources, yt_key, months=6, max_items=120, item_chars=400):
+def gather(company, sources, yt_key, months=6, max_items=120, item_chars=1200):
     """Run chosen fetchers, dedupe, interleave so no source dominates.
     Returns (items, status) where status maps source -> count or error note."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=30.44 * months) if months else None
@@ -112,23 +114,35 @@ def gather(company, sources, yt_key, months=6, max_items=120, item_chars=400):
         "Hacker News": lambda: fetch_hn(company, cutoff),
     }
     by_source, status = {}, {}
-    for s in sources:
-        try:
-            by_source[s] = fetchers[s]()
-            status[s] = len(by_source[s])
-        except Exception as e:  # one dead source must not kill the run
-            by_source[s], status[s] = [], f"failed ({str(e)[:60]})"
+    # Independent sources can load together. Error messages never include URLs
+    # or raw exceptions, which may contain an API key in query parameters.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        jobs={s:pool.submit(fetchers[s]) for s in dict.fromkeys(sources) if s in fetchers}
+        for s,job in jobs.items():
+            try:
+                by_source[s]=job.result();status[s]=len(by_source[s])
+            except Exception:
+                by_source[s],status[s]=[],'unavailable'
+    received=sum(len(v) for v in by_source.values());reasons={}
+    for s,raw in by_source.items():
+        by_source[s],counts=filter_feedback(raw)
+        for reason,n in counts.items():reasons[reason]=reasons.get(reason,0)+n
+        status[s]=len(by_source[s]) if status[s]!='unavailable' else 'unavailable'
+    quality={'received':received,'excluded':reasons,'selected':0,'rules':'conservative-text-screen-v1'}
+    status['_quality']=quality
     seen, merged = set(), []
     for group in zip_longest(*by_source.values()):
         for it in group:
             if not it:
                 continue
-            key = it["text"][:80].lower()
+            key = re.sub(r'\s+',' ',it['text']).strip().casefold()
             if key in seen:
                 continue
             seen.add(key)
             it["text"] = it["text"][:item_chars]
             merged.append(it)
             if len(merged) >= max_items:
+                quality['selected']=len(merged)
                 return merged, status
+    quality['selected']=len(merged)
     return merged, status

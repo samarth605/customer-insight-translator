@@ -9,6 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
+from quality import collection_notes
 
 
 def evidence_ids(ids, items):
@@ -64,10 +65,13 @@ def limitations(result):
             notes.append("At least one brand has fewer than 15 feedback items. Treat positioning opportunities as exploratory.")
     elif len(result.get("items", [])) < 20:
         notes.append("Fewer than 20 feedback items were analyzed. Treat findings as directional.")
+    notes.extend(collection_notes(result.get('collection',{})))
+    if result.get('quality_checks'):
+        notes.append('Automated evidence and copy checks are conservative checks, not independent fact verification. Remaining interpretations and suggestions still require human review.')
     return notes
 
 
-def sections(result):
+def _analysis_sections(result):
     """One content definition for the screen, text export and PDF."""
     data, items = result["data"], result.get("items", [])
     if result.get("kind") == "compare":
@@ -93,6 +97,13 @@ def sections(result):
 
 def _angle(angle, items):
     return {"title": angle["hook"], "detail": angle["why"], "ids": angle.get("evidence_ids", []), "quote": angle["customer_words"], "quote_exact": exact_quote(angle["customer_words"], angle.get("evidence_ids"), items), "badge": " / ".join(x for x in (angle.get("brand_label"), angle.get("channel")) if x)}
+
+
+def sections(result):
+    content=_analysis_sections(result)
+    checks=result.get('quality_checks',[])
+    if checks:content.append(('Evidence review notes',checks))
+    return content
 
 
 def sentiments(result):

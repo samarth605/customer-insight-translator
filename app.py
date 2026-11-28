@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from gemini_client import Busy, ProviderTimeout, generate_structured
 from sources import gather
 from report_view import render_report
+from quality import AnalysisQualityError, review_analysis
 
 APP_NAME = "VoiceBrief"
 st.set_page_config(page_title=f"{APP_NAME} | customer voice to strategy brief", layout="wide")
@@ -185,7 +186,11 @@ RULES = """Rules:
 - Ground every point in the numbered items. Never invent facts. Ignore items about a different company with a similar name.
 - Every point, pain point, angle and avoid-item must cite 1-3 item numbers in evidence_ids.
 - customer_words must be copied exactly from a cited item (under 12 words).
-- Percentages: sentiment must sum to 100; personas must sum to 100."""
+- Percentages: sentiment must sum to 100; personas must sum to 100.
+- Ignore promotion, creator praise and unrelated comments. A public commenter is not necessarily a customer or owner.
+- Distinguish the source's opinion, your interpretation and a proposed action. Do not turn comments into measured conversion, revenue or market results.
+- Messaging is a hypothesis, not substantiated advertising copy. Avoid superlatives, guarantees, comparative price/performance claims and autonomous-driving or safety assurances based only on testimonials.
+- A small set of opinions does not establish prevalence. Do not call a theme widespread without several relevant source items; report conflicting opinions."""
 
 
 def build_brief_prompt(industry, subject, desc, body, depth, own=False):
@@ -463,7 +468,9 @@ task = st.segmented_control("Choose your task", TASKS, default=TASKS[0], selecti
 
 
 def show_error(error, *, lookup=False):
-    if lookup:
+    if isinstance(error, AnalysisQualityError):
+        st.warning("The AI returned inconsistent estimates, so this analysis was not saved or counted. Your previous brief is preserved. Try again.")
+    elif lookup:
         if isinstance(error, ProviderTimeout):
             st.warning("Brand matching took too long and was stopped. Try again or use the exact brand name below. No analysis run was counted.")
         elif isinstance(error, Busy):
@@ -494,6 +501,7 @@ def caps_ok(cost=1):
 
 
 def finish(result, started, mode):
+    result['data'],result['quality_checks']=review_analysis(result['data'],result['items'],result['kind'],result.get('subject') or ' and '.join(result.get('names',[])))
     result.update(created_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"), origin=mode)
     st.session_state.result = result
     st.session_state.runs += 1
@@ -602,7 +610,9 @@ def brand_brief(industry, depth, window, months, srcs):
                 with st.status("Preparing your brief", expanded=True) as progress:
                     st.write("Collecting public feedback")
                     items, source_status = gather(subject, srcs, YT_KEY, months)
-                    st.write("Source collection: " + " / ".join(f"{k}: {v}" for k, v in source_status.items()))
+                    st.write("Usable source items: " + " / ".join(f"{k}: {v}" for k, v in source_status.items() if not k.startswith('_')))
+                    screening=source_status.get('_quality',{})
+                    if screening.get('excluded'):st.write(f"Excluded {sum(screening['excluded'].values())} recognizable promotional or off-topic items before analysis.")
                     if len(items) < 5:
                         progress.update(label="More feedback needed", state="error")
                         st.warning("Fewer than 5 usable items were found. Widen the date window, change sources or bring your own feedback. No run was counted.")
@@ -610,7 +620,7 @@ def brand_brief(industry, depth, window, months, srcs):
                     st.write(f"Interpreting {len(items)} feedback items and writing the brief")
                     data, model = run_analysis(build_brief_prompt(industry, subject, desc, numbered(items), depth), active_key, "brief")
                     progress.update(label="Brief ready", state="complete", expanded=False)
-                finish({"kind": "single", "data": data, "model": model, "industry": industry, "depth": depth, "subject": subject, "items": items, "window": window, "source_counts": source_counts(items)}, started, "public")
+                finish({"kind": "single", "data": data, "model": model, "industry": industry, "depth": depth, "subject": subject, "items": items, "window": window, "source_counts": source_counts(items), "collection":source_status.get('_quality',{})}, started, "public")
             except Exception as error: show_error(error)
 
 
@@ -654,7 +664,7 @@ def compare_brands(industry, depth, window, months, srcs):
                     st.write("Comparing the evidence and writing the analysis")
                     data, model = run_analysis(build_compare_prompt(industry, A, B, numbered(items, {"A": A[0], "B": B[0]}), depth, len(ia), len(ib)), active_key, "compare")
                     progress.update(label="Comparison ready", state="complete", expanded=False)
-                finish({"kind": "compare", "data": data, "model": model, "industry": industry, "depth": depth, "names": (A[0], B[0]), "counts": (len(ia), len(ib)), "items": items, "window": window, "source_counts": source_counts(items)}, started, "comparison")
+                finish({"kind": "compare", "data": data, "model": model, "industry": industry, "depth": depth, "names": (A[0], B[0]), "counts": (len(ia), len(ib)), "items": items, "window": window, "source_counts": source_counts(items), "collection":{'A':sa.get('_quality',{}),'B':sb.get('_quality',{})}}, started, "comparison")
             except Exception as error: show_error(error)
 
 

@@ -184,3 +184,13 @@ def test_comparison_looks_up_second_brand_even_when_first_lookup_times_out():
     assert at.radio(key='b_radio').value.startswith('QA working side B')
     at.checkbox(key='a_manual').check().run()
     assert any(b.key=='c_go' for b in at.button)
+
+
+def test_inconsistent_analysis_is_not_saved_or_counted():
+    at=fill_own(app(),'QA inconsistent estimates')
+    data=single_result()['data'];data['sentiment']={'positive':90,'neutral':90,'negative':10}
+    with patch('google.genai.Client',return_value=mock_client(data)):
+        at.button(key='p_go').click().run()
+    assert not at.exception and at.session_state.runs==0
+    assert any('inconsistent estimates' in w.value for w in at.warning)
+    assert 'result' not in at.session_state

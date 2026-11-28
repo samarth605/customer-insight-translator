@@ -41,6 +41,8 @@ def render_report(result):
         st.markdown(f'<div class="report-meta">{E(metadata)}<br>{E(result.get("created_at", ""))}</div><div class="report-lede">{E(data.get("summary", ""))}</div>', unsafe_allow_html=True)
         counts = " / ".join(f"{name}: {amount}" for name, amount in source_summary(result).items())
         st.caption("Source coverage: " + counts)
+        if result.get('quality_checks'):
+            st.info(f"{len(result['quality_checks'])} evidence or wording checks changed this output. Read Evidence review notes below; remaining findings still need human review.")
         if result.get("kind") == "compare":
             st.caption("Brand sample sizes: " + " / ".join(f"{name}: {n}" for name, n in zip(result.get("names", []), result.get("counts", []))))
         columns = st.columns(len(sentiments(result)))
@@ -93,7 +95,8 @@ def render_report(result):
             a.download_button("Download PDF report", data=cached["bytes"], file_name=report_filename(result), mime="application/pdf", type="primary", on_click="ignore", use_container_width=True)
         text = report_markdown(result)
         b.download_button("Download text", data=text, file_name=report_filename(result, "txt"), mime="text/plain;charset=utf-8", on_click="ignore", use_container_width=True)
-        c.download_button("Download JSON", data=json.dumps(data, indent=2, ensure_ascii=False), file_name=report_filename(result, "json"), mime="application/json", on_click="ignore", use_container_width=True)
+        export_data=dict(data,_report_metadata={k:result[k] for k in ('created_at','subject','names','origin','industry','window','model','items','source_counts','collection','quality_checks') if k in result})
+        c.download_button("Download JSON", data=json.dumps(export_data, indent=2, ensure_ascii=False), file_name=report_filename(result, "json"), mime="application/json", on_click="ignore", use_container_width=True)
         with st.expander("Copy report text"):
             st.code(text, language=None, wrap_lines=True)
         st.caption("Exports use this completed analysis. Downloading does not create a new run.")
