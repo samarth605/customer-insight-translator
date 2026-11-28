@@ -1,65 +1,64 @@
-# Consumer Insight Translator
-### CRD 494 — AI-Powered Marketing Tool | Samarth R Panchal
+# VoiceBrief
 
-Converts raw consumer data (reviews, comments, feedback) into structured marketing insights using Claude AI.
+Customer feedback interpreted as a sourced strategy brief. Built by Samarth Panchal with Python, Streamlit and the Gemini API.
 
----
+## Workflows
 
-## What it does
+- **Your feedback:** paste responses or upload a CSV, identify its feedback/date columns and add company context.
+- **Brand brief:** confirm a company match and gather a sample of public reviews/comments.
+- **Compare brands:** compare two confirmed brands with separate sample counts and shared research settings.
 
-- Identifies key themes from unstructured consumer data
-- Maps pain points with severity ratings
-- Generates behavioral customer personas
-- Provides prioritized marketing recommendations
-- Sentiment breakdown (positive / neutral / negative)
+Public sources are YouTube, App Store and Hacker News. Availability varies. Source collection, sampling limits and masking remain as implemented in sources.py and app.py.
 
----
-
-## Deploy on Streamlit Cloud (Free)
-
-1. Fork or upload this repo to your GitHub account
-2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub
-3. Click **New app** → select your repo → set `app.py` as the main file
-4. Under **Advanced settings → Secrets**, add:
-   ```
-   ANTHROPIC_API_KEY = "sk-ant-your-key-here"
-   ```
-5. Click **Deploy** — you'll get a public link in ~2 minutes
-
----
-
-## Get your free Anthropic API Key
-
-1. Go to [console.anthropic.com](https://console.anthropic.com)
-2. Sign up (free)
-3. Go to **API Keys** → Create new key
-4. Paste it into Streamlit secrets (step 4 above)
-
----
+The opening puts the task before optional analysis settings. The paper, ink and rust visual identity is retained. Completed reports have a separate reading area, source-inspection dialogs, an appendix and exports. Changing a brand query invalidates its previous selected match.
 
 ## Run locally
 
-```bash
-pip install streamlit anthropic
-streamlit run app.py
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
----
+The review copy's Start-Preview.cmd uses port 8502. The app opens without a key for interface review. Running an analysis requires a shared server key or a personal key entered in **Usage & API key**.
 
-## AI Tools Used
+For a shared deployment, add keys through Streamlit Community Cloud secrets or a local, ignored .streamlit/secrets.toml:
 
-| Tool | Role |
-|------|------|
-| Claude Sonnet (Anthropic API) | Core insight generation engine |
-| Streamlit | Web app framework |
-| ChatGPT | Project ideation and proposal structuring (documented in assignment) |
-| Gemini (Thinking) | System workflow design (documented in assignment) |
+```toml
+GOOGLE_API_KEY = "your-key"
+# Optional: required for the YouTube public source
+YOUTUBE_API_KEY = "your-youtube-key"
+# Optional: retain existing Supabase usage logging
+# SUPABASE_URL = "your-project-url"
+# SUPABASE_KEY = "your-publishable-key"
+# Optional: override the existing model selection
+# GEMINI_MODEL = "your-enabled-model"
+```
 
----
+Keep secrets outside version control. A visitor's personal Gemini key remains in its Streamlit session and is not included in PDF/text/JSON exports or usage logs. Personal keys bypass the app's shared-run caps; Google's quotas, model availability and any billing still apply. Existing shared limits are five analyses per visitor and 150 per day across visitors. Optional Supabase logging retains the existing schema; no database migration is needed.
 
-## Tech Stack
+## Reports and PDF export
 
-- Python 3.10+
-- Streamlit 1.35+
-- Anthropic Python SDK
-- Claude Sonnet 4
+Every completed brief or comparison offers **Download PDF report**, text and JSON downloads, plus copyable report text. Exporting uses the already-completed analysis and does not call Gemini or use another run. PDF bytes are reused within that session for the same report and invalidated when a new report completes.
+
+The PDF contains the result, sentiment estimates, every analysis section, sample/source information, model and timestamp, limitations and the complete source text made available to the analysis. Numbered references link to the source appendix; original public URLs are clickable. Own-feedback reports are labeled as such. Quotes marked as matching use an exact, whitespace-normalized source check; unmatched wording is labeled as a suggestion.
+
+PDFs are generated in memory with ReportLab. Noto Sans Regular and Bold are embedded under the SIL Open Font License in assets/fonts/OFL.txt. The app and text export preserve Unicode input. Symbols outside the embedded PDF font are represented by a visible Unicode codepoint and identified in a rendering note rather than silently omitted. This font covers Latin, Greek and Cyrillic; it is not a universal-script font.
+
+Sentiment and audience-group proportions are AI estimates. Sample count is shown as sample size, not statistical confidence. Suggested priorities, causes and comparative opportunities need review and validation. Common email/phone masking does not remove every kind of identifying information. Public data is a collected sample, not a census.
+
+## Add the genuine reference case
+
+Run the finished app, inspect its evidence and download the chosen PDF. Save the report intended for public display as reference_case/report.pdf. The reference-case download then appears automatically. No synthetic test fixture is presented as a reference case. See reference_case/README.md.
+
+## Tests
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest tests -q
+```
+
+Tests mock AI and source calls. They cover input validation, successful own/public/comparison generation, failure recovery, stale brand selections, evidence inspection, export caching, PDF content/links and long-report pagination. Synthetic QA reports are explicitly marked as test fixtures. Tests spend no analysis quota. Browser checks verify the actual downloads and responsive interface separately.
+
+The review branch does not change the portfolio homepage or deploy the live Streamlit app. Keep app.py as the Streamlit entrypoint when this change is approved for release.
+
