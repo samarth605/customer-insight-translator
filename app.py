@@ -1,7 +1,6 @@
 import html
 import ipaddress
 import json
-import random
 import re
 import socket
 import time
@@ -14,10 +13,9 @@ from urllib.parse import urlparse
 import pandas as pd
 import requests
 import streamlit as st
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field
 
+from gemini_client import Busy, ProviderTimeout, generate_structured
 from sources import gather
 from report_view import render_report
 
@@ -40,6 +38,7 @@ SB_KEY = secret("SUPABASE_KEY")
 # Override without redeploying: add GEMINI_MODEL = "..." in Streamlit Secrets.
 PRIMARY_MODEL = secret("GEMINI_MODEL") or "gemini-3.8-flash"
 FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
+LOOKUP_MODEL = secret("GEMINI_LOOKUP_MODEL") or "gemini-3.5-flash-lite"
 MAX_ITEMS = 120
 SESSION_LIMIT = 5   # free runs per visitor (every brief or comparison = 1 run)
 DAILY_LIMIT = 150   # free analyses per day across everyone
@@ -162,33 +161,9 @@ SCHEMAS = {"brief": Brief, "compare": Comparison}
 
 
 # ── Gemini helpers ─────────────────────────────────────────────────────────────
-class Busy(Exception):
-    """Gemini is overloaded (503/429). Not the user's fault; the run is not counted."""
-
-
-def _call_gemini(prompt, api_key, schema, temperature):
-    client = genai.Client(api_key=api_key)
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json", response_schema=schema, temperature=temperature)
-    last_err, overloaded = None, False
-    for model in dict.fromkeys([PRIMARY_MODEL, *FALLBACK_MODELS]):
-        for attempt in range(3):
-            try:
-                resp = client.models.generate_content(model=model, contents=prompt, config=config)
-                parsed = resp.parsed or schema.model_validate_json(resp.text)
-                return parsed.model_dump(), model
-            except Exception as e:  # noqa: BLE001
-                last_err, msg = e, str(e)
-                if "404" in msg or "NOT_FOUND" in msg:
-                    break  # model gone: try the next one
-                if any(c in msg for c in ("429", "500", "503", "UNAVAILABLE", "overloaded", "DEADLINE")):
-                    overloaded = True
-                    time.sleep(2 + 3 * attempt + random.random())  # back off, then retry
-                    continue
-                raise
-    if overloaded:
-        raise Busy("Gemini is overloaded")
-    raise last_err
+def _call_gemini(prompt, api_key, schema, temperature, *, lookup=False):
+    models = [LOOKUP_MODEL, "gemini-3.6-flash", PRIMARY_MODEL] if lookup else [PRIMARY_MODEL, *FALLBACK_MODELS]
+    return generate_structured(prompt, api_key, schema, temperature, models, lookup=lookup)
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -201,7 +176,7 @@ def find_companies(name, hint, api_key):
     prompt = (f"List up to 4 distinct real companies or brands named or closely matching '{name}'"
               f"{' (hint: ' + hint + ')' if hint else ''}. Include website domain and headquarters. "
               "Only include ones you are confident exist; return fewer rather than guess.")
-    data, _ = _call_gemini(prompt, api_key, Candidates, 0.1)
+    data, _ = _call_gemini(prompt, api_key, Candidates, 0.1, lookup=True)
     return data["companies"]
 
 
@@ -401,13 +376,28 @@ def find(prefix, name, hint):
         st.session_state.finds = st.session_state.get("finds", 0) + 1
         if st.session_state.finds > 25:
             raise RuntimeError("Lookup limit reached for this session. Add your own Gemini key in Usage & API key to keep going.")
-    st.session_state[f"{prefix}_cands"] = find_companies(name.strip(), hint.strip(), active_key)
+    # Clear old matches before a request, including a failed or empty lookup.
     st.session_state[f"{prefix}_q"] = name.strip()
+    st.session_state[f"{prefix}_lookup_hint"] = hint.strip()
+    st.session_state[f"{prefix}_cands"] = []
+    st.session_state.pop(f"{prefix}_radio", None)
+    st.session_state.pop(f"{prefix}_manual", None)
+    st.session_state[f"{prefix}_cands"] = find_companies(name.strip(), hint.strip(), active_key)
+
+
+def same_query(prefix, name, hint):
+    return (st.session_state.get(f"{prefix}_q") == name.strip()
+            and st.session_state.get(f"{prefix}_lookup_hint", "") == hint.strip())
 
 
 def pick(prefix, label):
     cands = st.session_state.get(f"{prefix}_cands")
     if not cands:
+        name = st.session_state.get(f"{prefix}_q", "")
+        if name:
+            st.caption("No confident brand match is available. You can retry with a website or fuller name, or continue with the exact name you entered. Check that the collected feedback refers to the right company.")
+            if st.checkbox(f"Use {name} exactly as entered", key=f"{prefix}_manual"):
+                return name, ""
         return None
     labels = [f"{c['name']} · {c['website']} · {c['headquarters']}" for c in cands]
     labels.append("None of these, use what I typed")
@@ -472,8 +462,17 @@ TASKS = ["Your feedback", "Brand brief", "Compare brands"]
 task = st.segmented_control("Choose your task", TASKS, default=TASKS[0], selection_mode="single", key="task_mode", on_change=task_changed) or TASKS[0]
 
 
-def show_error(error):
-    if isinstance(error, Busy):
+def show_error(error, *, lookup=False):
+    if lookup:
+        if isinstance(error, ProviderTimeout):
+            st.warning("Brand matching took too long and was stopped. Try again or use the exact brand name below. No analysis run was counted.")
+        elif isinstance(error, Busy):
+            st.warning("Brand matching is temporarily unavailable or rate-limited. Try again shortly or use the exact brand name below. No analysis run was counted.")
+        else:
+            st.error("Brand matching could not be completed. Check the API key in Usage & API key, or use the exact brand name below. No analysis run was counted.")
+    elif isinstance(error, ProviderTimeout):
+        st.warning("The AI provider took too long and the analysis was stopped. Your previous brief is preserved and no new run was counted. Try again shortly.")
+    elif isinstance(error, Busy):
         st.info("The AI provider is busy. This run was not counted. Try again shortly or use a different Gemini key in Usage & API key.")
     else:
         st.error("The analysis could not be completed. Check the API key and try again. Your previous brief is preserved and no new run was counted.")
@@ -592,9 +591,9 @@ def brand_brief(industry, depth, window, months, srcs):
         elif caps_ok():
             try:
                 with st.spinner("Finding matching brands..."): find("s", name, hint)
-            except Exception as error: show_error(error)
+            except Exception as error: show_error(error, lookup=True)
     # A changed query must not silently analyze an older selected candidate.
-    selected = pick("s", "Choose the matching brand") if st.session_state.get("s_q") == name.strip() else None
+    selected = pick("s", "Choose the matching brand") if same_query("s", name, hint) else None
     if selected and st.button("Write the brief", key="s_go", type="primary", use_container_width=True):
         if not srcs: st.warning("Choose at least one public source in Analysis settings.")
         elif caps_ok():
@@ -626,11 +625,16 @@ def compare_brands(industry, depth, window, months, srcs):
         if not (na.strip() and nb.strip()): st.warning("Type both brand names first.")
         elif caps_ok():
             try:
-                with st.spinner("Finding matching brands..."): find("a", na, ha); find("b", nb, hb)
-            except Exception as error: show_error(error)
+                # A failed lookup for one side must not prevent the other side.
+                for prefix, name, hint in (("a", na, ha), ("b", nb, hb)):
+                    try:
+                        with st.spinner(f"Finding matches for {name.strip()}..."):
+                            find(prefix, name, hint)
+                    except Exception as error: show_error(error, lookup=True)
+            except Exception as error: show_error(error, lookup=True)
     a, b = st.columns(2)
-    with a: A = pick("a", "Choose Brand A") if st.session_state.get("a_q") == na.strip() else None
-    with b: B = pick("b", "Choose Brand B") if st.session_state.get("b_q") == nb.strip() else None
+    with a: A = pick("a", "Choose Brand A") if same_query("a", na, ha) else None
+    with b: B = pick("b", "Choose Brand B") if same_query("b", nb, hb) else None
     if A and B and st.button("Write the comparison", key="c_go", type="primary", use_container_width=True):
         if not srcs: st.warning("Choose at least one public source in Analysis settings.")
         elif A[0].casefold() == B[0].casefold(): st.warning("Choose two different brands to compare.")

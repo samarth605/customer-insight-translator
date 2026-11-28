@@ -33,9 +33,15 @@ YOUTUBE_API_KEY = "your-youtube-key"
 # SUPABASE_KEY = "your-publishable-key"
 # Optional: override the existing model selection
 # GEMINI_MODEL = "your-enabled-model"
+# Optional: fast model for the small brand-identity lookup
+# GEMINI_LOOKUP_MODEL = "gemini-3.5-flash-lite"
 ```
 
 Keep secrets outside version control. A visitor's personal Gemini key remains in its Streamlit session and is not included in PDF/text/JSON exports or usage logs. Personal keys bypass the app's shared-run caps; Google's quotas, model availability and any billing still apply. Existing shared limits are five analyses per visitor and 150 per day across visitors. Optional Supabase logging retains the existing schema; no database migration is needed.
+
+## Brand matching and deadlines
+
+Brand matching uses a fast lookup model first, with a 10-second per-request timeout and a 25-second deadline across fallback models. The SDK is limited to one attempt per model; there are no nested retries. Slow requests are cancelled. If matching is unavailable or returns no confident candidate, a visitor can explicitly choose the exact name they entered. This does not claim that the company identity was verified. Changing either the name or the hint invalidates its old matches. Comparison lookup attempts both brands independently. Analysis requests have a separate 100-second total deadline, retain the configured analysis model first, and never count a failed or timed-out analysis as a run.
 
 ## Reports and PDF export
 
